@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* ── Base reset ── */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, "Noto Serif SC", Georgia, serif;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  user-select: none;
+}
+
+/* ── Scrollbar (global) ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* Tabular-nums for time displays */
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}

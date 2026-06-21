@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# Large binaries
+*.exe
+*.dll
+*.7z
+*.zip
+*.so
+*.dylib
+
+# Debug files
+_debug/
+$null
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Portable builds
+mochi-*.zip
+
+# Tauri generated
+src-tauri/gen/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# IDE misc
+*.swp
+*.swo
+
+# Claude dev artifacts
+.claude/
+_prompts/
+_sketches/
+
+# Temp
+src-tauri/lib/temp/

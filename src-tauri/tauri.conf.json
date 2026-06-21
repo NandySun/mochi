@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicholasgasior/tauri-v2-schema/main/tauri-v2-schema.json",
+  "productName": "Mochi",
+  "version": "0.1.0",
+  "identifier": "com.nandysun.mochi",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Mochi",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "minWidth": 800,
+        "minHeight": 500,
+        "decorations": false,
+        "dragDropEnabled": false,
+        "transparent": true
+      }
+    ],
+    "security": {
+      "csp": "img-src 'self' http://asset.localhost blob: data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/mochi/cache/**", "$APPDATA/mochi/**"]
+      }
+    }
+  },
+  "bundle": {
+    "resources": [
+      "lib/**/*"
+    ]
+  },
+  "plugins": {
+    "libmpv": null,
+    "shell": {
+      "open": true
+    }
+  }
+}

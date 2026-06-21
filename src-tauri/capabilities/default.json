@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capability for Mochi",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-start-dragging",
+    "window-state:default",
+    "libmpv:default",
+    "shell:allow-open"
+  ]
+}
