@@ -1,4 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { spring } from "../animations/tokens";
 import type { Track } from "../hooks/useMpv";
 import type { OscTheme } from "../themes/oscThemes";
 
@@ -124,23 +126,11 @@ export default function OscBar({
     };
   }, [isDragging, duration, onSeek]);
 
-  // --- Volume hover slider state ---
+  // --- Volume slider state ---
   const [showVolume, setShowVolume] = useState(false);
   const [isVolDragging, setIsVolDragging] = useState(false);
   const volTrackRef = useRef<HTMLDivElement>(null);
-  const volumeHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showVolumeSlider = useCallback(() => {
-    if (volumeHoverTimer.current) clearTimeout(volumeHoverTimer.current);
-    setShowVolume(true);
-  }, []);
-
-  const scheduleHideVolume = useCallback(() => {
-    if (volumeHoverTimer.current) clearTimeout(volumeHoverTimer.current);
-    volumeHoverTimer.current = setTimeout(() => {
-      if (!isVolDragging) setShowVolume(false);
-    }, 300);
-  }, [isVolDragging]);
+  const volBtnRef = useRef<HTMLButtonElement>(null);
 
   const calcVolume = useCallback((clientY: number) => {
     const el = volTrackRef.current;
@@ -213,6 +203,20 @@ export default function OscBar({
     return () => window.removeEventListener("mousedown", handleDown);
   }, [showEpisodes]);
 
+  useEffect(() => {
+    if (!showVolume) return;
+    const handleDown = (e: MouseEvent) => {
+      if (
+        volTrackRef.current?.contains(e.target as Node) ||
+        volBtnRef.current?.contains(e.target as Node)
+      ) return;
+      if (isVolDragging) return;
+      setShowVolume(false);
+    };
+    window.addEventListener("mousedown", handleDown);
+    return () => window.removeEventListener("mousedown", handleDown);
+  }, [showVolume, isVolDragging]);
+
   // ── Mark body when any OSC float is open (for Esc priority) ──────
   const hasOpenFloat = showVolume || showMenu || showEpisodes;
   useEffect(() => {
@@ -237,6 +241,7 @@ export default function OscBar({
   const audioTracks = tracks.filter((t) => t.type === "audio");
 
   const currentPct = isDragging ? dragPct : pct;
+
   const currentTrackHeight = isDragging
     ? theme.trackHeight + 2
     : hoverTrack && theme.hoverExpand
@@ -257,45 +262,41 @@ export default function OscBar({
     ...overrides,
   });
 
-  const hoverBtn = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.background = theme.buttonHoverBg;
-  };
-  const leaveBtn = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.background = theme.buttonBg;
-  };
-
   // --- Shared button components ---
   const PrevBtn = (
-    <button
+    <motion.button
       onClick={onPrev}
+      whileHover={{ backgroundColor: theme.buttonHoverBg }}
+      whileTap={{ scale: 0.92 }}
+      transition={spring.gentle}
       style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
-      onMouseEnter={hoverBtn}
-      onMouseLeave={leaveBtn}
     >
       ⏮
-    </button>
+    </motion.button>
   );
 
   const PlayBtn = (
-    <button
+    <motion.button
       onClick={onTogglePlay}
+      whileHover={{ backgroundColor: theme.buttonHoverBg }}
+      whileTap={{ scale: 0.88 }}
+      transition={spring.press}
       style={btnStyle({ width: 40, height: 40, fontSize: 16 })}
-      onMouseEnter={hoverBtn}
-      onMouseLeave={leaveBtn}
     >
       {paused ? "▶" : "⏸"}
-    </button>
+    </motion.button>
   );
 
   const NextBtn = (
-    <button
+    <motion.button
       onClick={onNext}
+      whileHover={{ backgroundColor: theme.buttonHoverBg }}
+      whileTap={{ scale: 0.92 }}
+      transition={spring.gentle}
       style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
-      onMouseEnter={hoverBtn}
-      onMouseLeave={leaveBtn}
     >
       ⏭
-    </button>
+    </motion.button>
   );
 
   const NowPlaying = theme.showNowPlaying ? (
@@ -308,98 +309,114 @@ export default function OscBar({
   const Spacer = <div className="flex-1" />;
 
   const SpeedBtn = theme.showSpeedButton ? (
-    <button
+    <motion.button
       onClick={onCycleSpeed}
+      whileHover={{ backgroundColor: theme.buttonHoverBg }}
+      whileTap={{ scale: 0.92 }}
+      transition={spring.gentle}
       style={btnStyle({ height: 34, padding: "0 14px", fontSize: 12 })}
-      onMouseEnter={hoverBtn}
-      onMouseLeave={leaveBtn}
     >
       {speed.toFixed(1)}×
-    </button>
+    </motion.button>
   ) : null;
 
   const VolumeBtn = theme.showVolumeSlider ? (
-    <div
-      className="relative"
-      onMouseEnter={showVolumeSlider}
-      onMouseLeave={scheduleHideVolume}
-    >
-      <button
-        onClick={() => onSetVolume(volume === 0 ? 100 : 0)}
+    <div className="relative">
+      <motion.button
+        ref={volBtnRef}
+        onClick={() => setShowVolume((v) => !v)}
+        whileHover={{ backgroundColor: theme.buttonHoverBg }}
+        whileTap={{ scale: 0.92 }}
+        transition={spring.gentle}
         style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
-        onMouseEnter={hoverBtn}
-        onMouseLeave={leaveBtn}
       >
         {volume === 0 ? "🔇" : "🔊"}
-      </button>
-      {showVolume && (
-        <div
-          className="absolute"
-          style={{
-            bottom: "100%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            marginBottom: 8,
-            width: 28,
-            height: 90,
-            background: "rgba(0,0,0,0.7)",
-            backdropFilter: "blur(8px)",
-            borderRadius: 8,
-            padding: "8px 0",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", textAlign: "center", marginBottom: 2 }}>
-            {Math.round(volume)}
-          </div>
-          <div
-            ref={volTrackRef}
-            className="relative"
-            style={{ width: 2, flex: 1, background: "rgba(255,255,255,0.1)", margin: "0 auto" }}
+      </motion.button>
+      <AnimatePresence>
+        {showVolume && (
+        <div style={{
+          position: "absolute",
+          bottom: "100%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          marginBottom: 8,
+        }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 6 }}
+            transition={spring.gentle}
+            style={{
+              width: 28,
+              height: 90,
+              background: "rgba(0,0,0,0.7)",
+              backdropFilter: "blur(8px)",
+              borderRadius: 8,
+              padding: "8px 0",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
           >
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", textAlign: "center", marginBottom: 2 }}>
+              {Math.round(volume)}
+            </div>
             <div
-              className="absolute left-0 right-0 bottom-0"
-              style={{
-                height: `${(volume / 130) * 100}%`,
-                background: "rgba(255,255,255,0.5)",
-              }}
-            />
-            <div
-              className="absolute"
-              style={{
-                left: "50%",
-                bottom: `${(volume / 130) * 100}%`,
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#fff",
-                transform: "translate(-50%, 50%)",
-                cursor: "grab",
-              }}
-              onMouseDown={handleVolKnobDown}
-            />
-          </div>
+              ref={volTrackRef}
+              className="relative"
+              style={{ width: 2, flex: 1, background: "rgba(255,255,255,0.1)", margin: "0 auto" }}
+            >
+              <div
+                className="absolute left-0 right-0 bottom-0"
+                style={{
+                  height: `${(volume / 130) * 100}%`,
+                  background: "rgba(255,255,255,0.5)",
+                }}
+              />
+              <motion.div
+                className="absolute"
+                animate={{ scale: isVolDragging ? 1.15 : 1 }}
+                transition={spring.press}
+                style={{
+                  left: "50%",
+                  bottom: `${(volume / 130) * 100}%`,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  transform: "translate(-50%, 50%)",
+                  cursor: "grab",
+                }}
+                onMouseDown={handleVolKnobDown}
+              />
+            </div>
+          </motion.div>
         </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   ) : null;
 
   const TrackMenuBtn = (
     <div className="relative">
-      <button
+      <motion.button
         ref={menuBtnRef}
         onClick={() => setShowMenu((v) => !v)}
+        whileHover={{ backgroundColor: theme.buttonHoverBg }}
+        whileTap={{ scale: 0.92 }}
+        transition={spring.gentle}
         style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
-        onMouseEnter={hoverBtn}
-        onMouseLeave={leaveBtn}
       >
         ⋮
-      </button>
-      {showMenu && (
-        <div
+      </motion.button>
+      <AnimatePresence>
+        {showMenu && (
+        <motion.div
           ref={menuRef}
+          initial={{ opacity: 0, y: 6, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 6, scale: 0.95 }}
+          transition={spring.gentle}
           className="absolute"
           style={{
             bottom: "100%",
@@ -482,25 +499,32 @@ export default function OscBar({
               无可用轨道
             </div>
           )}
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
   const EpisodeBtn = theme.showEpisodeButton && episodes.length > 1 ? (
     <div className="relative">
-      <button
+      <motion.button
         ref={epBtnRef}
         onClick={() => setShowEpisodes((v) => !v)}
+        whileHover={{ backgroundColor: theme.buttonHoverBg }}
+        whileTap={{ scale: 0.92 }}
+        transition={spring.gentle}
         style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
-        onMouseEnter={hoverBtn}
-        onMouseLeave={leaveBtn}
       >
         📋
-      </button>
-      {showEpisodes && (
-        <div
+      </motion.button>
+      <AnimatePresence>
+        {showEpisodes && (
+        <motion.div
           ref={epListRef}
+          initial={{ opacity: 0, y: 8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 8, scale: 0.96 }}
+          transition={spring.gentle}
           className="absolute"
           style={{
             bottom: "100%",
@@ -549,8 +573,9 @@ export default function OscBar({
               );
             })}
           </div>
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   ) : null;
 
@@ -649,8 +674,10 @@ export default function OscBar({
               {formatTime(dragPreviewTime)}
             </div>
           )}
-          <div
+          <motion.div
             className="absolute"
+            animate={{ scale: isDragging ? 1.15 : 1 }}
+            transition={spring.press}
             style={{
               left: `${currentPct}%`,
               top: -(knobSize - currentTrackHeight) / 2,

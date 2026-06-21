@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { Series, Episode } from "../types";
 import { useMpv } from "../hooks/useMpv";
@@ -7,6 +8,7 @@ import { useFullscreen } from "../hooks/useFullscreen";
 import { useBackground } from "../hooks/useBackground";
 import OscBar from "./OscBar";
 import { getTheme } from "../themes/oscThemes";
+import { BreathingDot } from "./BreathingDot";
 
 export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange?: (fs: boolean) => void }) {
   const { episodeId } = useParams<{ episodeId: string }>();
@@ -24,6 +26,7 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   const timePosRef = useRef(0);
   const volumeRef = useRef(0);
   const autoNextTriggeredRef = useRef(false);
+  const hasPlayedNaturallyRef = useRef(false);
 
   const mpv = useMpv();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
@@ -91,6 +94,8 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
         mpv.observe(ep.id, ep.watched_progress);
         await mpv.loadFile(filePath);
         if (cancelled) return;
+        hasPlayedNaturallyRef.current = false;
+        autoNextTriggeredRef.current = false;
 
         requestAnimationFrame(() => {
           const videoArea = document.querySelector("[data-mpv-area]") as HTMLElement | null;
@@ -203,7 +208,15 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   // ── Auto-play next episode ───────────────────────────────────────
   useEffect(() => {
     if (!mpv.duration || mpv.duration <= 0 || !nextEp) return;
-    if (mpv.timePos >= mpv.duration - 3 && !autoNextTriggeredRef.current && !mpv.paused) {
+    if (mpv.paused) return;
+
+    // Natural play detection: playhead has passed the start zone
+    if (mpv.timePos > 0 && mpv.timePos < 5) {
+      hasPlayedNaturallyRef.current = true;
+    }
+
+    if (mpv.timePos >= mpv.duration - 3 && !autoNextTriggeredRef.current) {
+      if (!hasPlayedNaturallyRef.current) return;
       autoNextTriggeredRef.current = true;
       goTo(nextEp.id);
     }
@@ -317,7 +330,7 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   if (!episode || loading) {
     return (
       <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#0e0e0e" }}>
-        <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>加载中…</span>
+        <BreathingDot size={24} />
       </div>
     );
   }
@@ -340,26 +353,38 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
       }}
     >
       {/* ── Top bar: back + episode label + fullscreen ──────────────── */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: isFullscreen ? "8px 16px 0" : "8px 12px 0", flexShrink: 0,
-        opacity: controlsHidden ? 0 : 1,
-        transition: "opacity 0.3s",
-        pointerEvents: controlsHidden ? "none" : "auto",
-      }}>
-        <button onClick={handleBack} className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+      <motion.div
+        animate={{ opacity: controlsHidden ? 0 : 1 }}
+        transition={{ duration: 0.25 }}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: isFullscreen ? "8px 16px 0" : "8px 12px 0", flexShrink: 0,
+          pointerEvents: controlsHidden ? "none" : "auto",
+        }}
+      >
+        <motion.button
+          onClick={handleBack}
+          className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileTap={{ scale: 0.92 }}
           style={{
             width: 32, height: 32, borderRadius: "50%",
             background: "rgba(255,255,255,0.08)", fontSize: 16, color: "rgba(255,255,255,0.5)",
-          }}>
+          }}
+        >
           ←
-        </button>
+        </motion.button>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{episodeLabel}</div>
-        <button onClick={toggleFullscreen} className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+        <motion.button
+          onClick={toggleFullscreen}
+          className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileTap={{ scale: 0.92 }}
           style={{
             width: 28, height: 28, borderRadius: 6,
             background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.45)",
-          }}>
+          }}
+        >
           {isFullscreen ? (
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
@@ -369,8 +394,8 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
             </svg>
           )}
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
 
       {/* ── Video area ───────────────────────────────────────────────── */}
       <div data-mpv-area style={{
@@ -379,11 +404,11 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
         borderRadius: isFullscreen ? 0 : 10, overflow: "hidden",
         margin: isFullscreen ? 0 : "8px 12px 12px 12px",
       }}>
-        <div style={{
-          opacity: controlsHidden ? 0 : 1,
-          transition: "opacity 0.3s",
-          pointerEvents: controlsHidden ? "none" : "auto",
-        }}>
+        <motion.div
+          animate={{ opacity: controlsHidden ? 0 : 1 }}
+          transition={{ duration: 0.25 }}
+          style={{ pointerEvents: controlsHidden ? "none" : "auto" }}
+        >
           <OscBar
             key={theme.id}
             theme={theme}
@@ -398,7 +423,7 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
             currentEpisodeId={epId ?? 0}
             onEpisodeSelect={(id) => saveAndGo(id)}
           />
-        </div>
+        </motion.div>
       </div>
     </div>
   );

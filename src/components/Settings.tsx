@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { Series } from "../types";
+import { spring } from "../animations/tokens";
 import { THEME_LIST } from "../themes/oscThemes";
+import { BreathingDot } from "./BreathingDot";
 
 const ROOT_DIRS_KEY = "mochi_root_dirs";
 const TMDB_KEY = "mochi_tmdb_key";
@@ -20,16 +23,9 @@ function loadJson<T>(key: string, fallback: T): T {
 }
 
 export default function Settings({ onClose }: { onClose: () => void }) {
-  // ── entrance/exit animation ────────────────────────────────────────────────
-  const [animating, setAnimating] = useState(false);
-
-  useEffect(() => {
-    requestAnimationFrame(() => setAnimating(true));
-  }, []);
-
+  // ── close (AnimatePresence handles exit animation) ────────────────────────
   const handleClose = () => {
-    setAnimating(false);
-    setTimeout(onClose, 150);
+    onClose();
   };
 
   // ── media library ────────────────────────────────────────────────────────────
@@ -41,6 +37,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const addInputRef = useRef<HTMLInputElement>(null);
 
   const [scanning, setScanning] = useState(false);
+  const [scanPath, setScanPath] = useState<string | null>(null);
+  const [scanCount, setScanCount] = useState(0);
 
   // ── metadata ─────────────────────────────────────────────────────────────────
   const [tmdbKey, setTmdbKey] = useState(
@@ -98,14 +96,20 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
   const handleRescan = async () => {
     setScanning(true);
+    setScanCount(0);
+    let totalCount = 0;
     for (const dir of rootDirs) {
+      setScanPath(dir);
       try {
-        await invoke("scan_library", { rootPath: dir });
+        const result = await invoke<{ series: { folder_name: string }[] }>("scan_library", { rootPath: dir });
+        totalCount += result.series.length;
+        setScanCount(totalCount);
       } catch {
         /* skip failed */
       }
     }
     setScanning(false);
+    setScanPath(null);
   };
 
   const saveTmdbKey = () => {
@@ -152,23 +156,36 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   return createPortal(
     <>
       {/* Overlay */}
-      <div onClick={handleClose} style={{
-        position: "fixed", inset: 0, zIndex: 100,
-        background: "rgba(0,0,0,0.6)",
-        opacity: animating ? 1 : 0,
-        transition: "opacity 0.15s ease",
-      }} />
-      {/* Card */}
+      <motion.div
+        key="settings-overlay"
+        onClick={handleClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        style={{
+          position: "fixed", inset: 0, zIndex: 100,
+          background: "rgba(0,0,0,0.6)",
+        }}
+      />
+      {/* Card — wrapper handles centering, motion.div handles slide */}
       <div style={{
         position: "fixed", top: "50%", left: "50%",
-        transform: animating ? "translate(-50%, -50%) scale(1)" : "translate(-50%, -50%) scale(0.96)",
-        opacity: animating ? 1 : 0,
-        transition: "opacity 0.15s ease, transform 0.15s ease",
+        transform: "translate(-50%, -50%)",
         zIndex: 101,
-        width: 600, maxHeight: "80vh",
-        background: "rgba(14,14,14,0.95)", backdropFilter: "blur(16px)",
-        borderRadius: 14, overflow: "hidden",
       }}>
+        <motion.div
+          key="settings-card"
+          initial={{ opacity: 0, x: 40 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 40 }}
+          transition={spring.settings}
+          style={{
+            width: 600, maxHeight: "80vh",
+            background: "rgba(14,14,14,0.95)", backdropFilter: "blur(16px)",
+            borderRadius: 14, overflow: "hidden",
+          }}
+        >
         {/* Close button */}
         <button onClick={handleClose} style={{
           position: "absolute", top: 16, right: 16, zIndex: 102,
@@ -262,13 +279,28 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             </button>
 
             {/* rescan */}
-            <button
-              style={{ ...actionBtn, marginTop: 16 }}
-              disabled={scanning}
-              onClick={handleRescan}
-            >
-              {scanning ? "扫描中…" : "重新扫描"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
+              <button
+                style={{ ...actionBtn, opacity: scanning ? 0.5 : 1 }}
+                disabled={scanning}
+                onClick={handleRescan}
+              >
+                重新扫描
+              </button>
+              {scanning && (
+                <>
+                  <BreathingDot size={16} />
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {scanPath ?? ""}
+                  </span>
+                  {scanCount > 0 && (
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>
+                      {scanCount} 个系列
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
           </section>
 
           {/* ── 元数据 ─────────────────────────────────────────────────── */}
@@ -307,13 +339,17 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             />
 
             {/* batch fetch */}
-            <button style={actionBtn} disabled={!!batchStatus} onClick={handleBatchFetch}>
-              批量拉取全部元数据
-            </button>
-            {batchStatus && (
-              <span style={{ marginLeft: 12, fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-                {batchStatus}
-              </span>
+            {batchStatus ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                <BreathingDot size={24} />
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                  {batchStatus}
+                </span>
+              </div>
+            ) : (
+              <button style={actionBtn} onClick={handleBatchFetch}>
+                批量拉取全部元数据
+              </button>
             )}
           </section>
 
@@ -357,7 +393,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             </p>
           </section>
         </div>
-      </div>
+          </motion.div>
+        </div>
     </>,
     document.body
   );

@@ -1,5 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useRef, useCallback } from "react";
 import type { ReactNode, Dispatch, SetStateAction } from "react";
+import { getTransitionDirection, type TempDirection } from "../utils/color";
 
 export interface BgState {
   gradient: string;
@@ -7,10 +8,16 @@ export interface BgState {
   maskGradient: string;
 }
 
-const BackgroundContext = createContext<{
+interface BgContextValue {
   bg: BgState;
   setBg: Dispatch<SetStateAction<BgState>>;
-} | null>(null);
+  /** 渐变版本号，每次 gradient 变化时递增，驱动 AnimatePresence */
+  gradientVersion: number;
+  /** 温度变化方向：1=变暖，-1=变冷，0=同温/初始 */
+  tempDirection: TempDirection;
+}
+
+const BackgroundContext = createContext<BgContextValue | null>(null);
 
 /* Semi-transparent gradients — this is the verified working approach for
  * making mpv video visible through the WebView.  The video renders to the
@@ -32,8 +39,26 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
     maskGradient: "linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.6) 100%)",
   });
 
+  const [gradientVersion, setGradientVersion] = useState(0);
+  const [tempDirection, setTempDirection] = useState<TempDirection>(0);
+  const prevGradient = useRef(bg.gradient);
+
+  // 包裹 setBg，在 gradient 变化时更新版本号和温度方向
+  const setBgWithTemp: Dispatch<SetStateAction<BgState>> = useCallback((value) => {
+    setBg((prev) => {
+      const next = typeof value === "function" ? value(prev) : value;
+      if (next.gradient !== prev.gradient) {
+        const dir = getTransitionDirection(prevGradient.current, next.gradient);
+        prevGradient.current = next.gradient;
+        setTempDirection(dir);
+        setGradientVersion((v) => v + 1);
+      }
+      return next;
+    });
+  }, []);
+
   return (
-    <BackgroundContext.Provider value={{ bg, setBg }}>
+    <BackgroundContext.Provider value={{ bg, setBg: setBgWithTemp, gradientVersion, tempDirection }}>
       {children}
     </BackgroundContext.Provider>
   );

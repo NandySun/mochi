@@ -42,3 +42,8 @@ body {
 .font-tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* ── framer-motion page transition helpers ── */
+/* NOTE: do NOT use will-change on data-motion-page — it creates a
+   compositing layer that obscures the native mpv surface in the
+   transparent-window architecture. Performance is fine without it. */

@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence, useMotionValue, useMotionValueEvent, useScroll, useSpring } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { Series } from "../types";
+import { spring } from "../animations/tokens";
 import { useImageSrc } from "../hooks/useImageSrc";
 import { useBackground, GRADIENTS } from "../hooks/useBackground";
+import { BreathingDot } from "./BreathingDot";
 
 const FILTERS = [
   { key: "resume", label: "继续" },
@@ -11,6 +14,9 @@ const FILTERS = [
   { key: "anime", label: "动漫" },
   { key: "tv", label: "影视" },
 ] as const;
+
+// ── PosterCard ─────────────────────────────────────────────────────────────
+// Phase 3: framer-motion replaces CSS transitions + imperative hover handlers.
 
 function PosterCard({
   s,
@@ -26,33 +32,33 @@ function PosterCard({
   const initial = s.display_name.charAt(0);
 
   return (
-    <button
+    <motion.button
       data-series-id={s.id}
+      layoutId={`poster-${s.id}`}
       onClick={onClick}
       className="cursor-pointer border-none"
+      layout
+      animate={{
+        scale: isActive ? 1.12 : 1,
+        opacity: isActive ? 1 : 0.5,
+        boxShadow: isActive
+          ? "0 0 24px rgba(196,126,58,0.35), 0 8px 32px rgba(0,0,0,0.5)"
+          : "0 0 0px rgba(196,126,58,0)",
+      }}
+      transition={spring.poster}
+      whileHover={{ opacity: isActive ? 1 : 0.75 }}
+      whileTap={{ scale: 0.97 }}
       style={{
         width: "clamp(110px, 15vw, 220px)",
         height: "clamp(165px, 22.5vw, 330px)",
         borderRadius: 6,
         overflow: "visible",
         flexShrink: 0,
-        scrollSnapAlign: "center",
         position: "relative",
         backgroundImage: posterSrc ? `url(${posterSrc})` : gradient,
         backgroundSize: "cover",
         backgroundPosition: "center",
-        opacity: isActive ? 1 : 0.5,
-        transform: isActive ? "scale(1.12)" : "scale(1)",
-        boxShadow: isActive
-          ? "0 0 24px rgba(196,126,58,0.35), 0 8px 32px rgba(0,0,0,0.5)"
-          : "none",
-        transition: "transform 0.3s, opacity 0.3s, box-shadow 0.3s",
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) e.currentTarget.style.opacity = "0.75";
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) e.currentTarget.style.opacity = "0.5";
+        border: "none",
       }}
     >
       {!posterSrc && (
@@ -70,16 +76,17 @@ function PosterCard({
           {initial}
         </span>
       )}
-    </button>
+    </motion.button>
   );
 }
+
+// ── PosterWall ─────────────────────────────────────────────────────────────
 
 export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [series, setSeries] = useState<Series[]>([]);
   const [filter, setFilter] = useState<"resume" | "all" | "anime" | "tv">("all");
   const [resumeEp, setResumeEp] = useState<{ id: number; series_id: number; episode_number: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [mounted, setMounted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { setBg } = useBackground();
@@ -88,11 +95,6 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     invoke<Series[]>("get_all_series")
       .then(setSeries)
       .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 30);
-    return () => clearTimeout(timer);
   }, []);
 
   // ── Resume filter ─────────────────────────────────────────────────────
@@ -128,6 +130,26 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     });
   }, [selected, setBg]);
 
+  // ── Viscous scroll-to-card (spring-driven, replaces CSS snap) ─────────
+  // mochi 滚动物理：低刚度 = 启停有质量感，高阻尼 = 粘滞包裹，无硬停止。
+  // animate() 不支持 scrollLeft（DOM property 非 CSS），改用
+  // MotionValue → useSpring → 手动写 scrollLeft。
+
+  const scrollTarget = useMotionValue(containerRef.current?.scrollLeft ?? 0);
+  const scrollSpring = useSpring(scrollTarget, {
+    stiffness: 100,
+    damping: 35,
+  });
+  const isProgrammaticRef = useRef(false);
+
+  // 将弹簧值同步到 DOM scrollLeft
+  useMotionValueEvent(scrollSpring, "change", (latest) => {
+    if (!containerRef.current) return;
+    isProgrammaticRef.current = true;
+    containerRef.current.scrollLeft = latest;
+    requestAnimationFrame(() => { isProgrammaticRef.current = false; });
+  });
+
   const scrollToCard = useCallback((index: number) => {
     const container = containerRef.current;
     if (!container) return;
@@ -135,12 +157,90 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     const card = cards[index] as HTMLElement | undefined;
     if (!card) return;
     const target = card.offsetLeft + card.offsetWidth / 2 - container.clientWidth / 2;
-    container.scrollTo({ left: target, behavior: "auto" });
-  }, []);
+    scrollTarget.set(target);
+  }, [scrollTarget]);
 
   useLayoutEffect(() => {
     scrollToCard(selectedIndex);
   }, [selectedIndex, scrollToCard]);
+
+  // ── Magnetic snap after free scrolling ───────────────────────────────
+
+  const { scrollX } = useScroll({ container: containerRef });
+  const snapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useMotionValueEvent(scrollX, "change", () => {
+    if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current);
+    if (isProgrammaticRef.current) return;
+
+    snapTimeoutRef.current = setTimeout(() => {
+      const container = containerRef.current;
+      if (!container || isProgrammaticRef.current) return;
+
+      const cards = Array.from(container.children) as HTMLElement[];
+      if (cards.length === 0) return;
+
+      const viewCenter = container.scrollLeft + container.clientWidth / 2;
+      let nearestIdx = 0;
+      let nearestDist = Infinity;
+
+      cards.forEach((card, i) => {
+        const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+        const dist = Math.abs(cardCenter - viewCenter);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestIdx = i;
+        }
+      });
+
+      if (nearestDist <= 30) {
+        const card = cards[nearestIdx];
+        const target = card.offsetLeft + card.offsetWidth / 2 - container.clientWidth / 2;
+        scrollTarget.set(target);
+        setSelectedIndex(nearestIdx);
+      }
+    }, 120);
+  });
+
+  // ── Jelly tag scaleX animation ────────────────────────────────────────
+  // 在 filter-indicator 的 layoutId spring 之上叠加沿移动方向的 scaleX 变形。
+  // 两个动画轨道作用于不同 CSS 属性（layoutId 管 x/y/w/h，scaleX 管 transform），不冲突。
+
+  const jellyScaleX = useMotionValue(1);
+  const jellyOriginX = useRef("50%");
+  const prevFilter = useRef(filter);
+
+  useEffect(() => {
+    const newIdx = FILTERS.findIndex((f) => f.key === filter);
+    const oldIdx = FILTERS.findIndex((f) => f.key === prevFilter.current);
+    prevFilter.current = filter;
+
+    if (oldIdx === newIdx || oldIdx < 0) return;
+
+    const direction = newIdx > oldIdx ? 1 : -1;
+    jellyOriginX.current = direction > 0 ? "0%" : "100%";
+
+    // 阶段 1: 正向拉伸 (scaleX ≈ 1.08)
+    jellyScaleX.set(1.08);
+
+    const t1 = setTimeout(() => {
+      // 阶段 2: 反向 undershoot (scaleX ≈ 0.95)
+      jellyScaleX.set(0.95);
+    }, 180);
+
+    const t2 = setTimeout(() => {
+      // 阶段 3: 回归原位
+      jellyScaleX.set(1);
+    }, 330);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  // ── Keyboard + wheel ──────────────────────────────────────────────────
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -160,7 +260,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filtered.length, selected, navigate]);
+  }, [filtered.length, selected, navigate, filter, resumeEp]);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     if (filtered.length <= 1) return;
@@ -180,43 +280,55 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
+  // ── No series at all (empty library) ──────────────────────────────────
 
-  // ── No series at all ────────────────────────────────────────────────────
   if (series.length === 0) {
     return (
-      <div
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25 }}
         style={{
           width: "100%",
           height: "100%",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: 16,
           background: "#0e0e0e",
-          color: "rgba(255,255,255,0.25)",
-          fontSize: 14,
           userSelect: "none",
         }}
       >
-        + 添加媒体文件夹
-      </div>
+        <BreathingDot size={24} />
+        <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 14 }}>
+          + 添加媒体文件夹
+        </span>
+      </motion.div>
     );
   }
 
+  // ── Render ────────────────────────────────────────────────────────────
+
   return (
-    <div
-      ref={outerRef}
-      style={{
-        width: "100%",
-        height: "100%",
-        position: "relative",
-        overflow: "hidden",
-        opacity: mounted ? 1 : 0,
-        transition: "opacity 0.25s ease",
-      }}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={spring.page}
+      style={{ width: "100%", height: "100%" }}
     >
+      <div
+        ref={outerRef}
+        style={{
+          width: "100%",
+          height: "100%",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
       <style>{`[data-scroll]::-webkit-scrollbar { display: none; }`}</style>
 
-      {/* ── Filter bar ──────────────────────────────────────────────────── */}
+      {/* ── Filter bar ──────────────────────────────────────────────── */}
       <div
         style={{
           position: "absolute",
@@ -230,44 +342,60 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           userSelect: "none",
         }}
       >
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ position: "relative", display: "flex", gap: 4 }}>
           {FILTERS.map((item) => {
             const isActive = item.key === filter;
             return (
-              <button
+              <motion.button
                 key={item.key}
                 onClick={() => {
                   setFilter(item.key);
                   setSelectedIndex(0);
                 }}
                 className="cursor-pointer bg-transparent border-none"
+                whileHover={{
+                  backgroundColor: isActive ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+                }}
+                whileTap={{ scale: 0.95 }}
                 style={{
+                  position: "relative",
                   height: 36,
                   padding: "0 16px",
                   borderRadius: 10,
                   fontSize: 13,
-                  background: isActive ? "rgba(255,255,255,0.12)" : "transparent",
+                  background: "transparent",
                   color: isActive ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.42)",
-                  transition: "background 0.15s, color 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = "transparent";
+                  border: "none",
                 }}
               >
-                {item.label}
-              </button>
+                {isActive && (
+                  <motion.div
+                    layoutId="filter-indicator"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(255,255,255,0.12)",
+                      borderRadius: 10,
+                      scaleX: jellyScaleX,
+                      transformOrigin: `${jellyOriginX.current} 50%`,
+                    }}
+                    transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                  />
+                )}
+                <span style={{ position: "relative", zIndex: 1 }}>{item.label}</span>
+              </motion.button>
             );
           })}
         </div>
 
         <div style={{ flex: 1 }} />
 
-        <button
+        {/* ── Settings gear ─────────────────────────────────────────── */}
+        <motion.button
           onClick={onOpenSettings}
           className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileTap={{ scale: 0.92 }}
           style={{
             width: 32,
             height: 32,
@@ -275,33 +403,45 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
             background: "rgba(255,255,255,0.08)",
             fontSize: 16,
             color: "rgba(255,255,255,0.45)",
-            transition: "background 0.15s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.14)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
         >
           ⚙
-        </button>
+        </motion.button>
       </div>
 
-      {/* ── Empty filtered state ─────────────────────────────────────────── */}
+      {/* ── Empty filtered state ─────────────────────────────────────── */}
       {filtered.length === 0 ? (
-        <div
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25 }}
           style={{
             position: "absolute",
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
-            color: "rgba(255,255,255,0.2)",
-            fontSize: 14,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 12,
             userSelect: "none",
           }}
         >
-          {filter === "resume" ? "没有正在观看的剧集" : "没有匹配的系列"}
-        </div>
+          {/* 微微低头的 mochi 呼吸圆 — 不沮丧，只是歪头 */}
+          <motion.div
+            initial={{ rotate: 0 }}
+            animate={{ rotate: -5 }}
+            transition={{ delay: 0.3, duration: 0.8, ease: "easeOut" }}
+          >
+            <BreathingDot size={24} />
+          </motion.div>
+          <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 14 }}>
+            {filter === "resume" ? "没有正在观看的剧集" : "换个标签试试？"}
+          </span>
+        </motion.div>
       ) : (
         <>
-          {/* ── Poster carousel ──────────────────────────────────────── */}
+          {/* ── Poster carousel ──────────────────────────────────── */}
           <div
             style={{
               position: "absolute",
@@ -318,7 +458,6 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                 position: "relative",
                 overflowX: "auto",
                 overflowY: "visible",
-                scrollSnapType: "x mandatory",
                 display: "flex",
                 gap: "clamp(12px, 2vw, 32px)",
                 padding: "clamp(12px, 2vw, 24px) calc(50% - clamp(55px, 7.5vw, 110px))",
@@ -346,42 +485,63 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
               ))}
             </div>
 
-            {/* ── Selected title ──────────────────────────────────────── */}
-            {selected && (
-              <div style={{
-                textAlign: "center",
-                marginTop: "clamp(8px, 1.5vw, 24px)",
-                fontSize: "clamp(14px, 2vw, 28px)",
-                fontWeight: 500,
-                color: "rgba(255,255,255,0.7)",
-                userSelect: "none",
-              }}>
-                {selected.display_name}
-              </div>
-            )}
+            {/* ── Selected title (cross-fade) ─────────────────────── */}
+            <AnimatePresence mode="wait">
+              {selected && (
+                <motion.div
+                  key={selected.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2 }}
+                  style={{
+                    textAlign: "center",
+                    marginTop: "clamp(8px, 1.5vw, 24px)",
+                    fontSize: "clamp(14px, 2vw, 28px)",
+                    fontWeight: 500,
+                    color: "rgba(255,255,255,0.7)",
+                    userSelect: "none",
+                  }}
+                >
+                  {selected.display_name}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            {/* ── Focus indicator dots ──────────────────────────────────── */}
+            {/* ── Focus indicator dots ────────────────────────────── */}
             {filtered.length > 1 && (
-              <div style={{
-                display: "flex",
-                justifyContent: "center",
-                gap: "clamp(4px, 0.5vw, 6px)",
-                marginTop: "clamp(6px, 0.8vw, 12px)",
-              }}>
-                {filtered.map((_, i) => (
-                  <div key={i} style={{
-                    width: i === selectedIndex ? 6 : 4,
-                    height: i === selectedIndex ? 6 : 4,
-                    borderRadius: "50%",
-                    background: i === selectedIndex ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.1)",
-                    transition: "all 0.2s",
-                  }} />
-                ))}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: "clamp(4px, 0.5vw, 6px)",
+                  marginTop: "clamp(6px, 0.8vw, 12px)",
+                }}
+              >
+                {filtered.map((_, i) => {
+                  const isDotActive = i === selectedIndex;
+                  return (
+                    <motion.div
+                      key={`dot-${i}`}
+                      layout
+                      animate={{
+                        width: isDotActive ? 6 : 4,
+                        height: isDotActive ? 6 : 4,
+                        backgroundColor: isDotActive
+                          ? "rgba(255,255,255,0.4)"
+                          : "rgba(255,255,255,0.1)",
+                      }}
+                      transition={spring.gentle}
+                      style={{ borderRadius: "50%" }}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
         </>
       )}
-    </div>
+      </div>
+    </motion.div>
   );
 }
