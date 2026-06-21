@@ -47,3 +47,6 @@ _sketches/
 
 # Temp
 src-tauri/lib/temp/
+
+# Internal docs (dev-only, not for public repo)
+docs/internal/
