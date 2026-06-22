@@ -43,7 +43,9 @@
         "installMode": "currentUser",
         "startMenuFolder": "Mochi",
         "displayLanguageSelector": false,
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
       }
     }
   },
