@@ -12,6 +12,7 @@ src-tauri/target/
 *.zip
 *.so
 *.dylib
+!src-tauri/WebView2Loader.dll
 
 # Debug files
 _debug/

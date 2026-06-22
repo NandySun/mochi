@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod metadata;
 mod mochi_file;
+mod paths;
 mod scanner;
 
 use commands::AppState;
@@ -171,13 +172,11 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// Get the database directory path (platform-appropriate).
-/// Uses %APPDATA%/mochi on Windows.
+/// Get the database path.
+/// Delegates to paths::data_root() for portable/installed mode resolution.
 fn dirs_next() -> Option<String> {
-    let appdata = std::env::var("APPDATA").ok()?;
-    let db_dir = std::path::Path::new(&appdata).join("mochi");
-    std::fs::create_dir_all(&db_dir).ok()?;
-    Some(db_dir.join("mochi.db").to_string_lossy().to_string())
+    let db_path = paths::data_root().ok()?.join("mochi.db");
+    Some(db_path.to_string_lossy().to_string())
 }
 
 /// Generate a 32×32 RGBA tray icon with the letter "M" in #c47e3a on a transparent background.
@@ -224,13 +223,10 @@ fn generate_tray_icon() -> Image<'static> {
     Image::new_owned(rgba, SIZE as u32, SIZE as u32)
 }
 
-/// Path to config.json in %APPDATA%/mochi/
+/// Path to config.json.
+/// Delegates to paths::data_root() for portable/installed mode resolution.
 fn config_path() -> Result<PathBuf, String> {
-    let appdata = std::env::var("APPDATA")
-        .map_err(|_| "APPDATA not set".to_string())?;
-    let dir = PathBuf::from(&appdata).join("mochi");
-    fs::create_dir_all(&dir).map_err(|e| format!("create config dir: {e}"))?;
-    Ok(dir.join("config.json"))
+    Ok(paths::data_root()?.join("config.json"))
 }
 
 /// Read config.json, returning Default on any failure.

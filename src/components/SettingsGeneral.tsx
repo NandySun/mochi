@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { sectionTitle, actionBtn, label } from "../styles/settings";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -187,37 +188,12 @@ export default function SettingsGeneral() {
   );
 }
 
-// ── styles ──────────────────────────────────────────────────────────────────────
-
-const sectionTitle: React.CSSProperties = {
-  fontSize: 12,
-  color: "rgba(255,255,255,0.3)",
-  textTransform: "uppercase",
-  letterSpacing: 2,
-  marginBottom: 16,
-};
-
-const label: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  color: "rgba(255,255,255,0.45)",
-  marginBottom: 6,
-};
+// ── local styles ────────────────────────────────────────────────────────────────
 
 const placeholder: React.CSSProperties = {
   fontSize: 13,
   color: "rgba(255,255,255,0.2)",
   margin: 0,
-};
-
-const actionBtn: React.CSSProperties = {
-  background: "rgba(255,255,255,0.08)",
-  color: "rgba(255,255,255,0.6)",
-  borderRadius: 8,
-  padding: "6px 20px",
-  fontSize: 12,
-  border: "none",
-  cursor: "pointer",
 };
 
 const kbdStyle: React.CSSProperties = {

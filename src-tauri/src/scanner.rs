@@ -284,16 +284,6 @@ fn ext_lower(path: &Path) -> Option<String> {
         .map(|e| e.to_lowercase())
 }
 
-/// Check if a path has a stem matching the given video stem (for subtitle/temp association).
-#[allow(dead_code)]
-fn has_same_stem(file_path: &Path, video_stem: &str) -> bool {
-    file_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_lowercase() == video_stem.to_lowercase())
-        .unwrap_or(false)
-}
-
 /// Get the lowercase filename.
 fn filename_lower(path: &Path) -> Option<String> {
     path.file_name()
@@ -983,7 +973,7 @@ mod tests {
     fn test_extract_episode_jp_wa_pattern() {
         // Priority 8: 第XX話
         assert_eq!(extract_episode_info("第1話.mkv"), Some((1, 1)));
-        assert_eq!(extract_episode_info("姫様"拷問"の時間です 第12話.mkv"), Some((1, 12)));
+        assert_eq!(extract_episode_info("姫様「拷問」の時間です 第12話.mkv"), Some((1, 12)));
     }
 
     #[test]

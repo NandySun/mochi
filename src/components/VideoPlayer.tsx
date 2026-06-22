@@ -27,8 +27,11 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   const volumeRef = useRef(0);
   const autoNextTriggeredRef = useRef(false);
   const hasPlayedNaturallyRef = useRef(false);
+  const handlePrevRef = useRef<() => void>(() => {});
+  const handleNextRef = useRef<() => void>(() => {});
 
   const mpv = useMpv();
+  const cycleSpeedRef = useRef(mpv.cycleSpeed);
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const [oscThemeId, setOscThemeId] = useState(() => localStorage.getItem("mochi_osc_theme") ?? "mochi");
   const theme = getTheme(oscThemeId);
@@ -42,6 +45,7 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   // Keep refs in sync with mpv state (avoids re-registering effects)
   timePosRef.current = mpv.timePos;
   volumeRef.current = mpv.volume;
+  cycleSpeedRef.current = mpv.cycleSpeed;
 
   useEffect(() => { onFullscreenChange?.(isFullscreen); }, [isFullscreen, onFullscreenChange]);
 
@@ -204,6 +208,8 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   };
   const handlePrev = () => { if (prevEp) saveAndGo(prevEp.id); };
   const handleNext = () => { if (nextEp) saveAndGo(nextEp.id); };
+  handlePrevRef.current = handlePrev;
+  handleNextRef.current = handleNext;
 
   // ── Auto-play next episode ───────────────────────────────────────
   useEffect(() => {
@@ -299,21 +305,21 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
           break;
         case "[":
           e.preventDefault();
-          mpv.cycleSpeed();
+          cycleSpeedRef.current();
           break;
         case "]":
           e.preventDefault();
-          mpv.cycleSpeed();
+          cycleSpeedRef.current();
           break;
         case "p":
         case "P":
           e.preventDefault();
-          handlePrev();
+          handlePrevRef.current();
           break;
         case "n":
         case "N":
           e.preventDefault();
-          handleNext();
+          handleNextRef.current();
           break;
       }
     };

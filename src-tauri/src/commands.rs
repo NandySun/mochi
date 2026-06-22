@@ -11,6 +11,30 @@ pub struct AppState {
     pub close_behavior: Mutex<String>,
 }
 
+/// Persist a MetadataResult to the DB for a given series.
+/// Caller must hold the DB lock.
+fn persist_metadata_result(
+    conn: &Connection,
+    series_id: i64,
+    result: &MetadataResult,
+) -> Result<(), String> {
+    db::update_series_metadata(
+        conn,
+        series_id,
+        &result.title,
+        &result.series_type,
+        result.bangumi_id,
+        result.tmdb_id,
+        result.synopsis.as_deref(),
+        result.year,
+        result.genres.as_deref(),
+        result.poster_path.as_deref(),
+        result.fanart_path.as_deref(),
+        result.score,
+    )
+    .map_err(|e| e.to_string())
+}
+
 // ── Scan command ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -231,21 +255,7 @@ pub async fn fetch_metadata(
     // Persist to DB
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        db::update_series_metadata(
-            &conn,
-            series_id,
-            &result.title,
-            &result.series_type,
-            result.bangumi_id,
-            result.tmdb_id,
-            result.synopsis.as_deref(),
-            result.year,
-            result.genres.as_deref(),
-            result.poster_path.as_deref(),
-            result.fanart_path.as_deref(),
-            result.score,
-        )
-        .map_err(|e| e.to_string())?;
+        persist_metadata_result(&conn, series_id, &result)?;
         // Update search_term in DB if a manual override was used and it found something
         if search_term_override.is_some() {
             db::update_series_search_term(&conn, series_id, &effective_term)
@@ -269,21 +279,7 @@ pub async fn match_bangumi_id(
 
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        db::update_series_metadata(
-            &conn,
-            series_id,
-            &result.title,
-            &result.series_type,
-            result.bangumi_id,
-            result.tmdb_id,
-            result.synopsis.as_deref(),
-            result.year,
-            result.genres.as_deref(),
-            result.poster_path.as_deref(),
-            result.fanart_path.as_deref(),
-            result.score,
-        )
-        .map_err(|e| e.to_string())?;
+        persist_metadata_result(&conn, series_id, &result)?;
     }
 
     Ok(result)
@@ -305,21 +301,7 @@ pub async fn match_tmdb_id(
 
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        db::update_series_metadata(
-            &conn,
-            series_id,
-            &result.title,
-            &result.series_type,
-            result.bangumi_id,
-            result.tmdb_id,
-            result.synopsis.as_deref(),
-            result.year,
-            result.genres.as_deref(),
-            result.poster_path.as_deref(),
-            result.fanart_path.as_deref(),
-            result.score,
-        )
-        .map_err(|e| e.to_string())?;
+        persist_metadata_result(&conn, series_id, &result)?;
     }
 
     Ok(result)
@@ -462,23 +444,11 @@ pub async fn save_verdict(
     if let Some(bid) = bangumi_id {
         let result = metadata::fetch_by_bangumi_id(bid, proxy_url.as_deref(), false).await?;
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        db::update_series_metadata(
-            &conn, series_id,
-            &result.title, &result.series_type,
-            result.bangumi_id, result.tmdb_id,
-            result.synopsis.as_deref(), result.year, result.genres.as_deref(),
-            result.poster_path.as_deref(), result.fanart_path.as_deref(), result.score,
-        ).map_err(|e| e.to_string())?;
+        persist_metadata_result(&conn, series_id, &result)?;
     } else if let (Some(tid), Some(mt), Some(key)) = (tmdb_id, media_type, tmdb_api_key) {
         let result = metadata::fetch_by_tmdb_id(tid, &mt, &key, "zh-CN", proxy_url.as_deref(), false).await?;
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        db::update_series_metadata(
-            &conn, series_id,
-            &result.title, &result.series_type,
-            result.bangumi_id, result.tmdb_id,
-            result.synopsis.as_deref(), result.year, result.genres.as_deref(),
-            result.poster_path.as_deref(), result.fanart_path.as_deref(), result.score,
-        ).map_err(|e| e.to_string())?;
+        persist_metadata_result(&conn, series_id, &result)?;
     } else {
         // No ID provided: just update the type
         let conn = state.db.lock().map_err(|e| e.to_string())?;

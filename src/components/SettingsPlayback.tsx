@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { THEME_LIST } from "../themes/oscThemes";
+import { sectionTitle, label } from "../styles/settings";
 
 export default function SettingsPlayback() {
   // ── OSC theme ──────────────────────────────────────────────────────────────
@@ -47,19 +48,4 @@ export default function SettingsPlayback() {
   );
 }
 
-// ── styles ──────────────────────────────────────────────────────────────────────
 
-const sectionTitle: React.CSSProperties = {
-  fontSize: 12,
-  color: "rgba(255,255,255,0.3)",
-  textTransform: "uppercase",
-  letterSpacing: 2,
-  marginBottom: 16,
-};
-
-const label: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  color: "rgba(255,255,255,0.45)",
-  marginBottom: 6,
-};

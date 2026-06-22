@@ -87,23 +87,7 @@ pub fn write_mochi(dir_path: &Path, mochi: &MochiFile) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
     }
 
-    // 构建文件内容
-    let mut content = String::new();
-    if let Some(ref t) = mochi.series_type {
-        content.push_str(&format!("type={}\n", t));
-    }
-    if let Some(id) = mochi.tmdb_id {
-        content.push_str(&format!("tmdb_id={}\n", id));
-    }
-    if let Some(id) = mochi.bangumi_id {
-        content.push_str(&format!("bangumi_id={}\n", id));
-    }
-    if let Some(ref term) = mochi.search_term {
-        content.push_str(&format!("search_term={}\n", term));
-    }
-    if let Some(ref ts) = mochi.last_fetched {
-        content.push_str(&format!("last_fetched={}\n", ts));
-    }
+    let content = mochi_to_string(mochi);
 
     // 原子写入：临时文件 → 重命名
     fs::write(&temp_path, content.as_bytes())
@@ -121,6 +105,18 @@ pub fn write_mochi_flat(root_path: &Path, series_name: &str, mochi: &MochiFile) 
     let file_path = dir.join(format!("{}.mochi", series_name));
     let temp_path = dir.join(format!("{}.mochi.tmp", series_name));
 
+    let content = mochi_to_string(mochi);
+
+    fs::write(&temp_path, content.as_bytes())
+        .map_err(|e| format!("写入临时文件失败: {e}"))?;
+    fs::rename(&temp_path, &file_path)
+        .map_err(|e| format!("重命名临时文件失败: {e}"))?;
+
+    Ok(())
+}
+
+/// 将 MochiFile 序列化为 .mochi 文件格式。
+fn mochi_to_string(mochi: &MochiFile) -> String {
     let mut content = String::new();
     if let Some(ref t) = mochi.series_type {
         content.push_str(&format!("type={}\n", t));
@@ -137,13 +133,7 @@ pub fn write_mochi_flat(root_path: &Path, series_name: &str, mochi: &MochiFile) 
     if let Some(ref ts) = mochi.last_fetched {
         content.push_str(&format!("last_fetched={}\n", ts));
     }
-
-    fs::write(&temp_path, content.as_bytes())
-        .map_err(|e| format!("写入临时文件失败: {e}"))?;
-    fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("重命名临时文件失败: {e}"))?;
-
-    Ok(())
+    content
 }
 
 // ── 内部解析 ─────────────────────────────────────────────────────────────────
@@ -196,7 +186,6 @@ fn parse_mochi_file(file_path: &Path) -> Result<MochiFile, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use std::path::PathBuf;
 
     fn temp_dir() -> PathBuf {

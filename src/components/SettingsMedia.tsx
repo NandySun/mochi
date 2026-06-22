@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { SeriesScan } from "../types";
 import { spring } from "../animations/tokens";
 import { BreathingDot } from "./BreathingDot";
+import { sectionTitle, actionBtn } from "../styles/settings";
 
 const ROOT_DIRS_KEY = "mochi_root_dirs";
 const AMBIGUOUS_KEY = "mochi_ambiguous_series";
@@ -294,15 +295,7 @@ export default function SettingsMedia() {
   );
 }
 
-// ── styles ──────────────────────────────────────────────────────────────────────
-
-const sectionTitle: React.CSSProperties = {
-  fontSize: 12,
-  color: "rgba(255,255,255,0.3)",
-  textTransform: "uppercase",
-  letterSpacing: 2,
-  marginBottom: 16,
-};
+// ── local styles ────────────────────────────────────────────────────────────────
 
 const dirPath: React.CSSProperties = {
   flex: 1,
@@ -329,14 +322,4 @@ const textBtn: React.CSSProperties = {
   fontSize: 13,
   cursor: "pointer",
   padding: "4px 0",
-};
-
-const actionBtn: React.CSSProperties = {
-  background: "rgba(255,255,255,0.08)",
-  color: "rgba(255,255,255,0.6)",
-  borderRadius: 8,
-  padding: "6px 20px",
-  fontSize: 12,
-  border: "none",
-  cursor: "pointer",
 };

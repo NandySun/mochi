@@ -8,14 +8,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug)]
 pub enum DbError {
     Sqlite(rusqlite::Error),
-    NotFound(String),
 }
 
 impl fmt::Display for DbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DbError::Sqlite(e) => write!(f, "SQLite error: {e}"),
-            DbError::NotFound(msg) => write!(f, "not found: {msg}"),
         }
     }
 }
@@ -24,7 +22,6 @@ impl std::error::Error for DbError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             DbError::Sqlite(e) => Some(e),
-            DbError::NotFound(_) => None,
         }
     }
 }

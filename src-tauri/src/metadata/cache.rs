@@ -1,18 +1,16 @@
 //! Image download and local caching.
 //!
-//! All downloaded images live in `%APPDATA%/mochi/cache/`.
+//! All downloaded images live in `<data_root>/cache/` (see `crate::paths`).
 //! Cached images are never evicted automatically; the directory
 //! can be cleared manually at any time (mochi will re-download on next fetch).
 
+use crate::paths;
 use std::path::{Path, PathBuf};
 
 /// Return the cache directory, creating it if needed.
+/// Delegates to paths::cache_root() for portable/installed mode resolution.
 pub fn cache_dir() -> Result<PathBuf, String> {
-    let appdata = std::env::var("APPDATA").map_err(|_| "APPDATA not set".to_string())?;
-    let dir = Path::new(&appdata).join("mochi").join("cache");
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("Failed to create cache dir: {e}"))?;
-    Ok(dir)
+    paths::cache_root()
 }
 
 /// Download an image from `url` and save it to `cache_path`.
@@ -54,13 +52,6 @@ pub async fn download_image(url: &str, cache_path: &Path, proxy_url: Option<&str
         .map_err(|e| format!("Failed to write cache file: {e}"))?;
 
     Ok(())
-}
-
-/// Build a cache file path for an AniList poster or banner.
-pub fn anilist_cache_path(kind: &str, id: i32) -> Result<PathBuf, String> {
-    let ext = if kind == "banner" { "jpg" } else { "jpg" };
-    let filename = format!("anilist_{}_{}.{}", id, kind, ext);
-    Ok(cache_dir()?.join(filename))
 }
 
 /// Build a cache file path for a TMDB poster or banner.
