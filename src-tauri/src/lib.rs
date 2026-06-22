@@ -1,15 +1,33 @@
 mod commands;
 mod db;
 mod metadata;
+mod mochi_file;
 mod scanner;
 
 use commands::AppState;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri::Emitter;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::image::Image;
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use tauri_plugin_window_state::StateFlags;
+
+/// App configuration persisted to %APPDATA%/mochi/config.json
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub(crate) struct Config {
+    close_behavior: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            close_behavior: "tray".to_string(),
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,8 +42,15 @@ pub fn run() {
 
     let conn = db::init_db(&db_path).expect("Failed to initialize database");
 
+    // Read config (fallback to defaults if file missing or corrupt)
+    let config = config_path()
+        .ok()
+        .and_then(|p| read_config(&p).ok())
+        .unwrap_or_default();
+
     let app_state = AppState {
         db: Mutex::new(conn),
+        close_behavior: Mutex::new(config.close_behavior),
     };
 
     tauri::Builder::default()
@@ -68,15 +93,42 @@ pub fn run() {
                         _ => {}
                     }
                 })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        ..
+                    } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
                 .build(app)?;
 
-            // ── Intercept close → hide to tray ────────────────────────────
+            // ── Intercept close → hide to tray (configurable) ──────────
             let window = app.get_webview_window("main").unwrap();
             let window_clone = window.clone();
+            let app_handle = app.handle().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    window_clone.hide().ok();
+                    let behavior = app_handle
+                        .state::<AppState>()
+                        .close_behavior
+                        .lock()
+                        .unwrap()
+                        .clone();
+                    if behavior == "tray" {
+                        api.prevent_close();
+                        window_clone.hide().ok();
+                        let _ = window_clone.emit("tray-minimized", ());
+                    } else {
+                        // "exit" — Tauri's app.exit(0) is unreliable inside
+                        // CloseRequested (event loop state prevents it from
+                        // being consumed). Use the system call directly.
+                        std::process::exit(0);
+                    }
                 }
             });
 
@@ -99,8 +151,17 @@ pub fn run() {
             commands::search_tmdb_tv,
             commands::search_tmdb_movie,
             commands::update_search_term,
+            commands::update_series_type,
+            commands::get_series_by_folder,
+            commands::save_verdict,
+            commands::clear_all_verdicts,
             commands::get_cache_dir,
+            commands::get_cache_size,
+            commands::clear_cache,
             commands::read_image_base64,
+            commands::get_app_version,
+            commands::get_close_behavior,
+            commands::set_close_behavior,
             commands::set_fullscreen,
             commands::window_minimize,
             commands::window_toggle_maximize,
@@ -161,4 +222,29 @@ fn generate_tray_icon() -> Image<'static> {
     }
 
     Image::new_owned(rgba, SIZE as u32, SIZE as u32)
+}
+
+/// Path to config.json in %APPDATA%/mochi/
+fn config_path() -> Result<PathBuf, String> {
+    let appdata = std::env::var("APPDATA")
+        .map_err(|_| "APPDATA not set".to_string())?;
+    let dir = PathBuf::from(&appdata).join("mochi");
+    fs::create_dir_all(&dir).map_err(|e| format!("create config dir: {e}"))?;
+    Ok(dir.join("config.json"))
+}
+
+/// Read config.json, returning Default on any failure.
+fn read_config(path: &PathBuf) -> Result<Config, String> {
+    if !path.exists() {
+        return Ok(Config::default());
+    }
+    let raw = fs::read_to_string(path).map_err(|e| format!("read config: {e}"))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse config: {e}"))
+}
+
+/// Write Config to config.json.
+pub(crate) fn write_config(config: &Config) -> Result<(), String> {
+    let path = config_path()?;
+    let json = serde_json::to_string_pretty(config).map_err(|e| format!("serialize config: {e}"))?;
+    fs::write(&path, &json).map_err(|e| format!("write config: {e}"))
 }

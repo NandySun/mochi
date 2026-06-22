@@ -2,11 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useMotionValue, useMotionValueEvent, useScroll, useSpring } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import type { Series } from "../types";
+import type { Series, SeriesScan } from "../types";
 import { spring } from "../animations/tokens";
 import { useImageSrc } from "../hooks/useImageSrc";
 import { useBackground, GRADIENTS } from "../hooks/useBackground";
 import { BreathingDot } from "./BreathingDot";
+import MetadataVerdict from "./MetadataVerdict";
 
 const FILTERS = [
   { key: "resume", label: "继续" },
@@ -87,15 +88,35 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
   const [filter, setFilter] = useState<"resume" | "all" | "anime" | "tv">("all");
   const [resumeEp, setResumeEp] = useState<{ id: number; series_id: number; episode_number: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [ambiguousSeries, setAmbiguousSeries] = useState<SeriesScan[]>(() => {
+    try {
+      const raw = localStorage.getItem("mochi_ambiguous_series");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showVerdict, setShowVerdict] = useState(false);
+  const [tmdbKey] = useState<string | null>(() => localStorage.getItem("mochi_tmdb_key"));
+  const [proxyUrl] = useState<string | null>(() => localStorage.getItem("mochi_proxy_url"));
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { setBg } = useBackground();
 
-  useEffect(() => {
+  const fetchSeries = useCallback(() => {
     invoke<Series[]>("get_all_series")
       .then(setSeries)
       .catch(console.error);
   }, []);
+
+  useEffect(() => { fetchSeries(); }, [fetchSeries]);
+
+  // Refresh on data changes (scan complete, metadata fetch, type change)
+  useEffect(() => {
+    const handler = () => fetchSeries();
+    window.addEventListener("mochi:data-changed", handler);
+    return () => window.removeEventListener("mochi:data-changed", handler);
+  }, [fetchSeries]);
 
   // ── Resume filter ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -293,17 +314,44 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 16,
           background: "#0e0e0e",
           userSelect: "none",
         }}
       >
-        <BreathingDot size={24} />
-        <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 14 }}>
-          + 添加媒体文件夹
-        </span>
+        {/* Settings gear — always visible */}
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 24px 0" }}>
+          <motion.button
+            onClick={(e) => { e.stopPropagation(); onOpenSettings(); }}
+            className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+            whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+            whileTap={{ scale: 0.92 }}
+            style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "rgba(255,255,255,0.08)",
+              fontSize: 16, color: "rgba(255,255,255,0.45)",
+            }}
+          >
+            ⚙
+          </motion.button>
+        </div>
+        {/* Center content */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+          <BreathingDot size={24} />
+          <motion.button
+            onClick={onOpenSettings}
+            whileHover={{ color: "rgba(255,255,255,0.45)" }}
+            whileTap={{ scale: 0.96 }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "rgba(255,255,255,0.2)", fontSize: 14,
+            }}
+          >
+            + 添加媒体文件夹
+          </motion.button>
+          <span style={{ color: "rgba(255,255,255,0.12)", fontSize: 11 }}>
+            或按 Ctrl+, 打开设置
+          </span>
+        </div>
       </motion.div>
     );
   }
@@ -542,6 +590,61 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
         </>
       )}
       </div>
+
+      {/* ── Verdict banner ────────────────────────────────────────── */}
+      {ambiguousSeries.length > 0 && !showVerdict && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: "absolute",
+            top: 56,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+          }}
+        >
+          <motion.button
+            onClick={() => setShowVerdict(true)}
+            whileHover={{ backgroundColor: "rgba(196,126,58,0.15)" }}
+            whileTap={{ scale: 0.97 }}
+            style={{
+              padding: "10px 24px",
+              borderRadius: 24,
+              border: "1px solid rgba(196,126,58,0.25)",
+              background: "rgba(20,20,20,0.9)",
+              backdropFilter: "blur(12px)",
+              color: "#c47e3a",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {ambiguousSeries.length} 个新系列待确认 — 点击匹配
+          </motion.button>
+        </motion.div>
+      )}
+
+      {/* ── Verdict modal ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showVerdict && (
+          <MetadataVerdict
+            ambiguous={ambiguousSeries}
+            tmdbApiKey={tmdbKey}
+            proxyUrl={proxyUrl}
+            onClose={() => setShowVerdict(false)}
+            onResolved={() => {
+              localStorage.removeItem("mochi_ambiguous_series");
+              setAmbiguousSeries([]);
+              // Refresh series list
+              invoke<Series[]>("get_all_series")
+                .then(setSeries)
+                .catch(console.error);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

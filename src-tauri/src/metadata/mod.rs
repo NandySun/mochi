@@ -66,6 +66,9 @@ pub struct MetadataResult {
     pub score: Option<i32>,
     /// Human-readable diagnostic message (e.g. image download status).
     pub diagnostic: Option<String>,
+    /// Set to true when both Bangumi and TMDB returned results for an unknown series,
+    /// indicating the user should make a manual choice via the verdict UI.
+    pub ambiguous: bool,
 }
 
 // ── Orchestration ─────────────────────────────────────────────────────────────
@@ -82,6 +85,8 @@ pub async fn fetch_metadata(
     proxy_url: Option<&str>,
     force: bool,
 ) -> Result<MetadataResult, String> {
+    let fallback_type = series_type.to_string();
+
     match series_type {
         "anime" => {
             // Bangumi first (best coverage + Chinese data), then TMDB enrichment for backdrop
@@ -95,14 +100,20 @@ pub async fn fetch_metadata(
                             }
                         }
                     }
+                    // Note: diagnostic already set by try_bangumi
                     return Ok(result);
                 }
-                Err(_) => { /* fall through to TMDB full search */ }
-            }
-            if let Some(key) = tmdb_api_key {
-                match try_tmdb(search_term, key, proxy_url, force).await {
-                    Ok(result) => return Ok(result),
-                    Err(_) => { /* no match */ }
+                Err(_e) => {
+                    // Bangumi failed – try TMDB fallback
+                    if let Some(key) = tmdb_api_key {
+                        match try_tmdb(search_term, key, proxy_url, force).await {
+                            Ok(mut result) => {
+                                result.series_type = fallback_type.clone();
+                                return Ok(result);
+                            }
+                            Err(_) => { /* both failed */ }
+                        }
+                    }
                 }
             }
         }
@@ -115,20 +126,46 @@ pub async fn fetch_metadata(
                 }
             }
             match try_bangumi(search_term, proxy_url, force).await {
-                Ok(result) => return Ok(result),
+                Ok(mut result) => {
+                    // Fallback: use Bangumi metadata but preserve the original type.
+                    // TMDB may have failed; Bangumi doesn't know this is live-action.
+                    result.series_type = fallback_type;
+                    result.diagnostic = Some("TMDB 不可达，使用 Bangumi 数据（类型已保留）".to_string());
+                    return Ok(result);
+                }
                 Err(_) => { /* no match */ }
             }
         }
         _ => {
-            // Unknown type: try Bangumi then TMDB
-            match try_bangumi(search_term, proxy_url, force).await {
-                Ok(result) => return Ok(result),
-                Err(_) => { /* fall through */ }
-            }
-            if let Some(key) = tmdb_api_key {
-                match try_tmdb(search_term, key, proxy_url, force).await {
-                    Ok(result) => return Ok(result),
-                    Err(_) => { /* no match */ }
+            // Unknown type: parallel search Bangumi + TMDB
+            let bgm_fut = try_bangumi(search_term, proxy_url, force);
+            let tmdb_fut = async {
+                if let Some(key) = tmdb_api_key {
+                    try_tmdb(search_term, key, proxy_url, force).await
+                } else {
+                    Err("TMDB API key not configured".to_string())
+                }
+            };
+
+            let (bgm_result, tmdb_result) = tokio::join!(bgm_fut, tmdb_fut);
+
+            match (&bgm_result, &tmdb_result) {
+                (Ok(bgm), Err(_)) => {
+                    // Only Bangumi matched: auto-adopt
+                    return Ok(bgm.clone());
+                }
+                (Err(_), Ok(tmdb)) => {
+                    // Only TMDB matched: auto-adopt
+                    return Ok(tmdb.clone());
+                }
+                (Ok(bgm), Ok(_tmdb)) => {
+                    // Both matched: return Bangumi result but flag ambiguous
+                    let mut result = bgm.clone();
+                    result.ambiguous = true;
+                    return Ok(result);
+                }
+                (Err(_), Err(_)) => {
+                    // Neither matched: fall through to no-match
                 }
             }
         }
@@ -147,6 +184,7 @@ pub async fn fetch_metadata(
         fanart_path: None,
         score: None,
         diagnostic: None,
+        ambiguous: false,
     })
 }
 
@@ -163,11 +201,30 @@ async fn try_bangumi(
         return Err("Bangumi: no results".to_string());
     }
     let media = &results[0];
-    if let Ok(detail) = bgm.get_by_id(media.id).await {
-        build_bangumi_result(&detail, proxy_url, force).await
-    } else {
-        build_bangumi_search_result(media, proxy_url, force).await
+
+    // Build a base result from search data (always available)
+    let mut result = build_bangumi_search_result(media, proxy_url, force).await?;
+
+    // Try detail API for enrichment (rating, genres).
+    // If it fails, the search-level data (title, synopsis, year, poster) is still intact.
+    match bgm.get_by_id(media.id).await {
+        Ok(detail) => {
+            // Enrich with rating
+            if let Some(ref rating) = detail.rating {
+                result.score = rating.score.map(|s| (s * 10.0).round() as i32);
+            }
+            // Enrich with genres (top 8 tags by count)
+            if !detail.tags.is_empty() {
+                let mut tags: Vec<&crate::metadata::bangumi::BangumiTag> = detail.tags.iter().collect();
+                tags.sort_by(|a, b| b.count.cmp(&a.count));
+                let names: Vec<&str> = tags.iter().take(8).map(|t| t.name.as_str()).collect();
+                result.genres = Some(serde_json::to_string(&names).unwrap_or_default());
+            }
+        }
+        Err(_) => { /* detail API failed – search-level data is enough */ }
     }
+
+    Ok(result)
 }
 
 async fn try_tmdb(
@@ -203,7 +260,7 @@ async fn try_tmdb(
 
 /// Try TMDB TV search only for backdrop enrichment (when Bangumi already matched).
 /// Returns the local fanart cache path on success.
-async fn try_tmdb_backdrop(
+pub(crate) async fn try_tmdb_backdrop(
     search_term: &str,
     api_key: &str,
     proxy_url: Option<&str>,
@@ -320,6 +377,7 @@ async fn build_bangumi_result(
         fanart_path: None,
         score: detail.rating.as_ref().and_then(|r| r.score).map(|s| (s * 10.0).round() as i32),
         diagnostic,
+        ambiguous: false,
     })
 }
 
@@ -355,6 +413,19 @@ async fn build_bangumi_search_result(
         None
     };
 
+    // Genres from search result tags (top 8 by count, available with responseGroup=medium)
+    let genres: Option<String> = if media.tags.is_empty() {
+        None
+    } else {
+        let mut tags: Vec<&BangumiTag> = media.tags.iter().collect();
+        tags.sort_by(|a, b| b.count.cmp(&a.count));
+        let names: Vec<&str> = tags.iter().take(8).map(|t| t.name.as_str()).collect();
+        Some(serde_json::to_string(&names).unwrap_or_default())
+    };
+
+    // Score from search result rating (available with responseGroup=medium)
+    let score = media.rating.as_ref().and_then(|r| r.score).map(|s| (s * 10.0).round() as i32);
+
     Ok(MetadataResult {
         title,
         series_type: "anime".to_string(),
@@ -366,11 +437,12 @@ async fn build_bangumi_search_result(
             Some(media.summary.clone())
         },
         year,
-        genres: None, // search results don't have tags
+        genres,
         poster_path,
         fanart_path: None,
-        score: None, // search results don't have rating
+        score,
         diagnostic: None,
+        ambiguous: false,
     })
 }
 
@@ -433,6 +505,7 @@ async fn build_tmdb_result(
         fanart_path,
         score: result.vote_average.map(|v| (v * 10.0).round() as i32),
         diagnostic: None,
+        ambiguous: false,
     })
 }
 

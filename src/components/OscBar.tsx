@@ -505,6 +505,9 @@ export default function OscBar({
     </div>
   );
 
+  // --- Episode grid layout (always 5 columns) ---
+  const EP_COLUMNS = 5;
+
   const EpisodeBtn = theme.showEpisodeButton && episodes.length > 1 ? (
     <div className="relative">
       <motion.button
@@ -519,61 +522,94 @@ export default function OscBar({
       </motion.button>
       <AnimatePresence>
         {showEpisodes && (
-        <motion.div
-          ref={epListRef}
-          initial={{ opacity: 0, y: 8, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 8, scale: 0.96 }}
-          transition={spring.gentle}
-          className="absolute"
-          style={{
-            bottom: "100%",
-            right: 0,
-            marginBottom: 8,
-            background: "rgba(0,0,0,0.85)",
-            backdropFilter: "blur(12px)",
-            borderRadius: 10,
-            padding: 10,
-            zIndex: 30,
-            maxWidth: 360,
-          }}
-        >
-          <div style={{
-            display: "flex", gap: 8,
-            overflowX: "auto",
-            scrollbarWidth: "none",
-          }}>
-            {episodes.map((ep) => {
-              const isCurrent = ep.id === currentEpisodeId;
-              const disabled = ep.status === "downloading" || ep.status === "missing";
-              let bg = "rgba(255,255,255,0.08)";
-              let color = "rgba(255,255,255,0.5)";
-              if (isCurrent) { bg = theme.accent; color = "#fff"; }
-              else if (ep.watched_completed) { bg = "rgba(76,175,80,0.15)"; color = "rgba(129,199,132,0.7)"; }
-              return (
-                <button
-                  key={ep.id}
-                  disabled={disabled && !isCurrent}
-                  onClick={() => { onEpisodeSelect(ep.id); setShowEpisodes(false); }}
-                  style={{
-                    minWidth: 40, height: 34,
-                    borderRadius: 7,
-                    background: bg,
-                    border: isCurrent ? `1px solid ${theme.accent}` : "1px solid transparent",
-                    color,
-                    fontSize: 13, fontWeight: isCurrent ? 600 : 400,
-                    cursor: disabled ? "default" : "pointer",
-                    opacity: disabled ? 0.35 : 1,
-                    flexShrink: 0,
-                    padding: "0 10px",
-                  }}
-                >
-                  {ep.episode_number.toString().padStart(2, "0")}
-                </button>
-              );
-            })}
-          </div>
-        </motion.div>
+        <div style={{
+          position: "absolute",
+          bottom: "100%",
+          right: 0,
+          marginBottom: 8,
+          zIndex: 30,
+        }}>
+          <motion.div
+            ref={epListRef}
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={spring.gentle}
+            style={{
+              background: "rgba(20,20,22,0.88)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.08)",
+              padding: 12,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${EP_COLUMNS}, 56px)`,
+                gap: 8,
+                maxHeight: 240,
+                overflowY: "auto",
+                scrollbarWidth: "thin",
+              }}
+            >
+              {episodes.map((ep) => {
+                const isCurrent = ep.id === currentEpisodeId;
+                const isWatched = ep.watched_completed === 1;
+                const disabled = ep.status === "downloading" || ep.status === "missing";
+
+                let bg: string;
+                let border: string;
+                let color: string;
+
+                if (isCurrent) {
+                  bg = "rgba(196,126,58,0.18)";
+                  border = theme.accent;
+                  color = "#fff";
+                } else if (isWatched) {
+                  bg = "rgba(90,170,150,0.12)";
+                  border = "rgba(90,170,150,0.2)";
+                  color = "rgba(90,170,150,0.6)";
+                } else {
+                  bg = "rgba(255,255,255,0.05)";
+                  border = "rgba(255,255,255,0.08)";
+                  color = "rgba(255,255,255,0.45)";
+                }
+
+                return (
+                  <motion.button
+                    key={ep.id}
+                    disabled={disabled && !isCurrent}
+                    onClick={() => { onEpisodeSelect(ep.id); setShowEpisodes(false); }}
+                    whileHover={
+                      !disabled
+                        ? { scale: 1.06, backgroundColor: isCurrent ? undefined : "rgba(255,255,255,0.1)" }
+                        : {}
+                    }
+                    whileTap={!disabled ? { scale: 0.93 } : {}}
+                    transition={spring.gentle}
+                    animate={{ opacity: disabled && !isCurrent ? 0.25 : 1 }}
+                    style={{
+                      width: 56,
+                      height: 38,
+                      borderRadius: 8,
+                      background: bg,
+                      border: `1px solid ${border}`,
+                      color,
+                      fontSize: 13,
+                      fontWeight: isCurrent ? 600 : 400,
+                      cursor: disabled && !isCurrent ? "default" : "pointer",
+                    }}
+                  >
+                    {ep.episode_number.toString().padStart(2, "0")}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        </div>
         )}
       </AnimatePresence>
     </div>

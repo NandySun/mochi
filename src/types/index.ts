@@ -42,7 +42,9 @@ export interface SeriesScan {
   search_term: string;
   poster_path: string | null;
   fanart_path: string | null;
+  series_type_hint: string | null;
   episodes: EpisodeScan[];
+  folder_path: string;
 }
 
 export interface EpisodeScan {
@@ -53,10 +55,12 @@ export interface EpisodeScan {
   title: string | null;
   subtitle_count: number;
   status: string;
+  match_method: string; // "regex" | "fallback"
 }
 
 export interface ScanResult {
   series: SeriesScan[];
+  ambiguous: SeriesScan[];
 }
 
 // ── Phase 2: Metadata ───────────────────────────────────────────────────────
@@ -76,6 +80,7 @@ export interface MetadataResult {
   fanart_path: string | null;
   score: number | null;
   diagnostic: string | null;
+  ambiguous: boolean;
 }
 
 /// Bangumi search result (for manual matching UI)

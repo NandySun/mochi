@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, LayoutGroup, motion, useMotionValue, useSpring } from "framer-motion";
+import { listen } from "@tauri-apps/api/event";
 import { NavDirectionProvider } from "./hooks/useNavigationDirection";
 import { BackgroundProvider, useBackground } from "./hooks/useBackground";
 import { useImageSrc } from "./hooks/useImageSrc";
@@ -95,6 +96,19 @@ export default function App() {
   const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTrayTip, setShowTrayTip] = useState(false);
+
+  // ── First-time tray minimize toast ────────────────────────────────
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen("tray-minimized", () => {
+      if (localStorage.getItem("mochi_tray_tip_shown") === "1") return;
+      localStorage.setItem("mochi_tray_tip_shown", "1");
+      setShowTrayTip(true);
+      setTimeout(() => setShowTrayTip(false), 3000);
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
 
   // ── Global keyboard shortcuts ───────────────────────────────────────
   useEffect(() => {
@@ -154,6 +168,37 @@ export default function App() {
             </main>
             <WindowResizeHandles disabled={isFullscreen} />
           </div>
+
+          {/* ── Tray minimize toast ──────────────────────────────────── */}
+          <AnimatePresence>
+            {showTrayTip && (
+              <motion.div
+                key="tray-tip"
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 24 }}
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                style={{
+                  position: "fixed",
+                  bottom: 24,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 10000,
+                  padding: "10px 22px",
+                  borderRadius: 10,
+                  background: "rgba(40,32,18,0.88)",
+                  backdropFilter: "blur(10px)",
+                  border: "1px solid rgba(196,126,58,0.2)",
+                  color: "rgba(255,230,190,0.85)",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                }}
+              >
+                Mochi 已最小化到系统托盘，右键图标可退出
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </BackgroundProvider>
     </NavDirectionProvider>

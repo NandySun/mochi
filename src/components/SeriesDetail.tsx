@@ -1,12 +1,25 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { Series, Episode } from "../types";
 import { spring } from "../animations/tokens";
 import { useImageSrc } from "../hooks/useImageSrc";
 import { useBackground, GRADIENTS } from "../hooks/useBackground";
 import { BreathingDot } from "./BreathingDot";
+
+// ── Type dropdown options ──────────────────────────────────────────────
+
+const TYPE_OPTIONS = [
+  { value: "anime", label: "动漫" },
+  { value: "tv", label: "影视" },
+  { value: "movie", label: "电影" },
+  { value: "unknown", label: "未知" },
+] as const;
+
+function typeLabel(value: string): string {
+  return TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
+}
 
 // ── Stagger animation variants ────────────────────────────────────────
 
@@ -37,8 +50,77 @@ export default function SeriesDetail() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [resumeEp, setResumeEp] = useState<Episode | null>(null);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [typeOpen, setTypeOpen] = useState(false);
+  const typeRef = useRef<HTMLDivElement>(null);
+  const [refreshingMeta, setRefreshingMeta] = useState(false);
+  const [editSearchTerm, setEditSearchTerm] = useState(false);
+  const [searchTermInput, setSearchTermInput] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showKebabMenu, setShowKebabMenu] = useState(false);
+  const kebabRef = useRef<HTMLDivElement>(null);
 
   const seriesId = id ? Number(id) : null;
+
+  // Close type dropdown on outside click
+  useEffect(() => {
+    if (!typeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (typeRef.current && !typeRef.current.contains(e.target as Node)) {
+        setTypeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [typeOpen]);
+
+  // Close kebab menu on outside click
+  useEffect(() => {
+    if (!showKebabMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (kebabRef.current && !kebabRef.current.contains(e.target as Node)) {
+        setShowKebabMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showKebabMenu]);
+
+  const handleTypeChange = async (newType: string) => {
+    try {
+      await invoke("update_series_type", { seriesId, newType });
+      setSeries((prev) => prev ? { ...prev, type: newType as Series["type"] } : prev);
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      console.error("Failed to update type:", err);
+    }
+  };
+
+  const handleRefreshMeta = async () => {
+    setShowKebabMenu(false);
+    setRefreshingMeta(true);
+    try {
+      const tmdbKey = localStorage.getItem("mochi_tmdb_key") ?? "";
+      const proxyUrl = localStorage.getItem("mochi_proxy_url") ?? "";
+      const rootPaths: string[] = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]");
+      const override = editSearchTerm && searchTermInput.trim()
+        ? searchTermInput.trim()
+        : null;
+      await invoke("fetch_metadata", {
+        seriesId,
+        tmdbApiKey: tmdbKey || null,
+        proxyUrl: proxyUrl || null,
+        force: false,
+        searchTermOverride: override,
+        rootPaths: rootPaths.length > 0 ? rootPaths : null,
+      });
+      reload();
+      setEditSearchTerm(false);
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      console.error("Failed to refresh metadata:", err);
+    }
+    setRefreshingMeta(false);
+  };
 
   const reload = useCallback(() => {
     if (seriesId == null) return;
@@ -222,6 +304,307 @@ export default function SeriesDetail() {
             >
               {series.display_name}
             </h1>
+
+            {/* Type dropdown + Kebab menu */}
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>类型</span>
+              <div ref={typeRef} style={{ position: "relative" }}>
+                <button
+                  onClick={() => setTypeOpen(!typeOpen)}
+                  className="border-none"
+                  style={{
+                    padding: "4px 26px 4px 10px",
+                    borderRadius: 12,
+                    background: typeOpen
+                      ? "rgba(255,255,255,0.1)"
+                      : "rgba(255,255,255,0.06)",
+                    border: `1px solid ${typeOpen ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)"}`,
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    outline: "none",
+                    position: "relative",
+                  }}
+                >
+                  {typeLabel(series.type)}
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      fontSize: 8,
+                      opacity: 0.35,
+                    }}
+                  >
+                    ▾
+                  </span>
+                </button>
+                {typeOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.15 }}
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: 0,
+                      background: "rgba(14,14,14,0.96)",
+                      backdropFilter: "blur(14px)",
+                      borderRadius: 8,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      overflow: "hidden",
+                      zIndex: 50,
+                      minWidth: 100,
+                    }}
+                  >
+                    {TYPE_OPTIONS.map((opt) => {
+                      const isSelected = opt.value === series.type;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => {
+                            handleTypeChange(opt.value);
+                            setTypeOpen(false);
+                          }}
+                          className="border-none"
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: "8px 16px 8px 22px",
+                            textAlign: "left",
+                            background: isSelected
+                              ? "rgba(255,255,255,0.06)"
+                              : "transparent",
+                            color: isSelected
+                              ? "rgba(255,255,255,0.7)"
+                              : "rgba(255,255,255,0.4)",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            outline: "none",
+                            position: "relative",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) {
+                              (e.target as HTMLElement).style.background =
+                                "rgba(255,255,255,0.05)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) {
+                              (e.target as HTMLElement).style.background =
+                                "transparent";
+                            }
+                          }}
+                        >
+                          {isSelected && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                left: 8,
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                width: 4,
+                                height: 4,
+                                borderRadius: "50%",
+                                background: "#c47e3a",
+                              }}
+                            />
+                          )}
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Kebab menu */}
+              <div ref={kebabRef} style={{ position: "relative" }}>
+                {refreshingMeta ? (
+                  <BreathingDot size={16} color="#c47e3a" style={{ cursor: "default" }} />
+                ) : (
+                  <button
+                    onClick={() => setShowKebabMenu(!showKebabMenu)}
+                    className="border-none"
+                    style={{
+                      width: 24,
+                      height: 24,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 6,
+                      background: showKebabMenu
+                        ? "rgba(255,255,255,0.1)"
+                        : "transparent",
+                      color: "rgba(255,255,255,0.35)",
+                      fontSize: 14,
+                      cursor: "pointer",
+                      outline: "none",
+                      border: editSearchTerm
+                        ? "1px solid rgba(196,126,58,0.5)"
+                        : "1px solid transparent",
+                    }}
+                  >
+                    ⋮
+                  </button>
+                )}
+                <AnimatePresence>
+                  {showKebabMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                      transition={spring.gentle}
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 4px)",
+                        right: 0,
+                        background: "rgba(14,14,14,0.96)",
+                        backdropFilter: "blur(14px)",
+                        borderRadius: 8,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        overflow: "hidden",
+                        zIndex: 50,
+                        minWidth: 140,
+                      }}
+                    >
+                      {[
+                        {
+                          label: "↻ 刷新元数据",
+                          action: () => { handleRefreshMeta(); },
+                          selected: false,
+                          title: "仅补充缺失字段，已有数据不会被覆盖",
+                        },
+                        {
+                          label: "✎ 编辑搜索词",
+                          action: () => {
+                            setShowKebabMenu(false);
+                            if (!editSearchTerm) {
+                              setSearchTermInput(series.search_term);
+                              setEditSearchTerm(true);
+                              setTimeout(() => searchInputRef.current?.focus(), 0);
+                            } else {
+                              setEditSearchTerm(false);
+                            }
+                          },
+                          selected: editSearchTerm,
+                        },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          onClick={item.action}
+                          title={"title" in item ? item.title : undefined}
+                          className="border-none"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            width: "100%",
+                            padding: "10px 16px",
+                            textAlign: "left",
+                            background: "transparent",
+                            color: "rgba(255,255,255,0.5)",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            outline: "none",
+                            gap: 8,
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.background =
+                              "rgba(255,255,255,0.06)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.background =
+                              "transparent";
+                          }}
+                        >
+                          <span style={{ flex: 1 }}>{item.label}</span>
+                          {item.selected && (
+                            <span style={{ color: "#c47e3a", fontSize: 10 }}>•</span>
+                          )}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Edit search term inline input */}
+              {editSearchTerm && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchTermInput}
+                    onChange={(e) => setSearchTermInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleRefreshMeta();
+                      if (e.key === "Escape") setEditSearchTerm(false);
+                    }}
+                    placeholder="输入搜索词"
+                    style={{
+                      fontSize: 11,
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "rgba(255,255,255,0.05)",
+                      color: "rgba(255,255,255,0.5)",
+                      outline: "none",
+                      width: 120,
+                    }}
+                  />
+                  <button
+                    onClick={handleRefreshMeta}
+                    style={{
+                      fontSize: 10,
+                      padding: "3px 10px",
+                      borderRadius: 6,
+                      border: "none",
+                      background: "rgba(196,126,58,0.15)",
+                      color: "rgba(196,126,58,0.8)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    确认
+                  </button>
+                  <button
+                    onClick={() => setEditSearchTerm(false)}
+                    style={{
+                      fontSize: 10,
+                      padding: "3px 10px",
+                      borderRadius: 6,
+                      border: "none",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "rgba(255,255,255,0.35)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Metadata loading indicator */}
+            <AnimatePresence>
+              {refreshingMeta && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                  style={{
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.25)",
+                    marginBottom: 8,
+                  }}
+                >
+                  正在拉取元数据…
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {series.score != null && (
               <div

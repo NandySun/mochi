@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS series (
     type TEXT DEFAULT 'unknown',
     poster_path TEXT,
     fanart_path TEXT,
-    anilist_id INTEGER,
+    bangumi_id INTEGER,
     tmdb_id INTEGER,
     synopsis TEXT,
     year INTEGER,
@@ -129,6 +129,11 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         Ok(()) => {}
         Err(_) => { /* column already exists – ignore */ }
     }
+    // Migration: rename anilist_id to bangumi_id (Phase 2 cleanup)
+    match conn.execute_batch("ALTER TABLE series RENAME COLUMN anilist_id TO bangumi_id") {
+        Ok(()) => {}
+        Err(_) => { /* already renamed or fresh DB – ignore */ }
+    }
     Ok(conn)
 }
 
@@ -139,7 +144,7 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
     conn.query_row(
         "INSERT INTO series (
             title, folder_name, display_name, search_term, type,
-            poster_path, fanart_path, anilist_id, tmdb_id, synopsis,
+            poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
             year, genres, score, created_at, updated_at
         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
         ON CONFLICT(folder_name) DO UPDATE SET
@@ -149,7 +154,7 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
             type=excluded.type,
             poster_path=excluded.poster_path,
             fanart_path=excluded.fanart_path,
-            anilist_id=excluded.anilist_id,
+            bangumi_id=excluded.bangumi_id,
             tmdb_id=excluded.tmdb_id,
             synopsis=excluded.synopsis,
             year=excluded.year,
@@ -183,7 +188,7 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
 pub fn get_all_series(conn: &Connection) -> Result<Vec<Series>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
-                poster_path, fanart_path, anilist_id, tmdb_id, synopsis,
+                poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
                 year, genres, score, created_at, updated_at
          FROM series ORDER BY title",
     )?;
@@ -191,11 +196,26 @@ pub fn get_all_series(conn: &Connection) -> Result<Vec<Series>> {
     rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+/// Return a series by folder_name, or None.
+pub fn get_series_by_folder(conn: &Connection, folder_name: &str) -> Result<Option<Series>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, folder_name, display_name, search_term, type,
+                poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
+                year, genres, score, created_at, updated_at
+         FROM series WHERE folder_name = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![folder_name], |row| series_from_row(row))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
 /// Return a single series by id, or `None` if it doesn't exist.
 pub fn get_series_by_id(conn: &Connection, id: i64) -> Result<Option<Series>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
-                poster_path, fanart_path, anilist_id, tmdb_id, synopsis,
+                poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
                 year, genres, score, created_at, updated_at
          FROM series WHERE id = ?1",
     )?;
@@ -320,14 +340,14 @@ pub fn update_series_metadata(conn: &Connection, series_id: i64, title: &str, se
         "UPDATE series
          SET title = ?1,
              type = ?2,
-             anilist_id = ?3,
+             bangumi_id = ?3,
              tmdb_id = ?4,
-             synopsis = ?5,
-             year = ?6,
-             genres = ?7,
-             poster_path = COALESCE(?8, poster_path),
-             fanart_path = COALESCE(?9, fanart_path),
-             score = ?11,
+             synopsis = COALESCE(?5, synopsis),
+             year = COALESCE(?6, year),
+             genres = COALESCE(?7, genres),
+             poster_path = COALESCE(poster_path, ?8),
+             fanart_path = COALESCE(fanart_path, ?9),
+             score = COALESCE(?11, score),
              updated_at = datetime('now')
          WHERE id = ?10",
         params![
@@ -352,6 +372,25 @@ pub fn update_series_search_term(conn: &Connection, series_id: i64, new_term: &s
     conn.execute(
         "UPDATE series SET search_term = ?1, updated_at = datetime('now') WHERE id = ?2",
         params![new_term, series_id],
+    )?;
+    Ok(())
+}
+
+/// Update the series type (anime/tv/movie/unknown). Used by the detail page type dropdown.
+pub fn update_series_type(conn: &Connection, series_id: i64, new_type: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET type = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![new_type, series_id],
+    )?;
+    Ok(())
+}
+
+/// Clear all metadata IDs and search_term overrides from the DB.
+/// Preserves series.type (user-set type). Used by "clear all verdicts".
+pub fn clear_all_metadata_ids(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET bangumi_id = NULL, tmdb_id = NULL, search_term = NULL, updated_at = datetime('now')",
+        [],
     )?;
     Ok(())
 }

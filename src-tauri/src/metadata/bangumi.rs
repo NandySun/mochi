@@ -18,6 +18,12 @@ pub struct BangumiSearchResult {
     #[serde(rename = "air_date")]
     pub air_date: String,
     pub images: BangumiImages,
+    /// Available with responseGroup=medium
+    #[serde(default)]
+    pub rating: Option<BangumiRating>,
+    /// Available with responseGroup=medium
+    #[serde(default)]
+    pub tags: Vec<BangumiTag>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,7 +107,7 @@ impl BangumiClient {
             .query(&[
                 ("type", "2"), // anime
                 ("max_results", "5"),
-                ("responseGroup", "small"),
+                ("responseGroup", "medium"),
             ])
             .send()
             .await
