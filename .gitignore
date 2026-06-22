@@ -26,6 +26,7 @@ $null
 Thumbs.db
 
 # Portable builds
+releases/
 mochi-*.zip
 
 # Tauri generated
