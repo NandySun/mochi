@@ -6,7 +6,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $releaseDir = Join-Path $projectRoot "src-tauri\target\release"
 $libDir = Join-Path $projectRoot "src-tauri\lib"
 $releasesDir = Join-Path $projectRoot "releases"
@@ -61,7 +61,7 @@ Remove-Item -Recurse -Force $stagingDir -ErrorAction SilentlyContinue
 
 # List both deliverables for this version
 Write-Host ""
-Write-Host "Release deliverables for v$version:" -ForegroundColor Yellow
+Write-Host "Release deliverables for v${version}:" -ForegroundColor Yellow
 if (Test-Path $zipPath) {
     Write-Host "  Portable: releases/$zipName ($zipSize MB)"
 }
