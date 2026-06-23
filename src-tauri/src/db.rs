@@ -67,11 +67,35 @@ pub struct Episode {
     pub file_path: String,
     pub duration: i64,
     pub subtitle_count: i32,
+    pub subtitle_paths: Option<String>, // JSON array string
     pub status: String,
     pub watched_progress: i64,
     pub watched_completed: i32,
+    pub still_path: Option<String>,     // 剧集缩略图本地缓存路径
+    pub still_url: Option<String>,      // 剧集缩略图远程 URL（TMDB w300）
+    pub overview: Option<String>,       // 剧集简介
+    pub air_date: Option<String>,       // 播出日期 YYYY-MM-DD
+    pub runtime: Option<i32>,           // 时长（分钟）
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Person {
+    pub id: i64,
+    pub source: String,         // "tmdb" | "bangumi"
+    pub source_id: String,      // 源 ID（字符串，兼容 TMDB int + Bangumi int）
+    pub name: String,           // 演员/声优名
+    pub role_name: Option<String>, // 角色名
+    pub image_url: Option<String>, // 头像远程 URL
+    pub image_cache: Option<String>, // 头像本地缓存路径
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeriesCast {
+    pub series_id: i64,
+    pub person_id: i64,
+    pub sort_order: i32,
 }
 
 // ── SQL ────────────────────────────────────────────────────────────────────────
@@ -106,11 +130,37 @@ CREATE TABLE IF NOT EXISTS episodes (
     file_path TEXT NOT NULL UNIQUE,
     duration INTEGER DEFAULT 0,
     subtitle_count INTEGER DEFAULT 0,
+    subtitle_paths TEXT,
     status TEXT DEFAULT 'ready',
     watched_progress INTEGER DEFAULT 0,
     watched_completed INTEGER DEFAULT 0,
+    still_path TEXT,
+    still_url TEXT,
+    overview TEXT,
+    air_date TEXT,
+    runtime INTEGER,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
+)";
+
+const CREATE_PERSON: &str = "
+CREATE TABLE IF NOT EXISTS person (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role_name TEXT,
+    image_url TEXT,
+    image_cache TEXT,
+    UNIQUE(source, source_id)
+)";
+
+const CREATE_SERIES_CAST: &str = "
+CREATE TABLE IF NOT EXISTS series_cast (
+    series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+    person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    sort_order INTEGER DEFAULT 0,
+    PRIMARY KEY (series_id, person_id)
 )";
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -121,6 +171,8 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(CREATE_SERIES)?;
     conn.execute_batch(CREATE_EPISODES)?;
+    conn.execute_batch(CREATE_PERSON)?;
+    conn.execute_batch(CREATE_SERIES_CAST)?;
     // Migration: add score column if not present (safe on both fresh and existing DBs)
     match conn.execute_batch("ALTER TABLE series ADD COLUMN score INTEGER") {
         Ok(()) => {}
@@ -130,6 +182,36 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
     match conn.execute_batch("ALTER TABLE series RENAME COLUMN anilist_id TO bangumi_id") {
         Ok(()) => {}
         Err(_) => { /* already renamed or fresh DB – ignore */ }
+    }
+    // Migration: add subtitle_paths column if not present
+    match conn.execute_batch("ALTER TABLE episodes ADD COLUMN subtitle_paths TEXT") {
+        Ok(()) => {}
+        Err(_) => { /* column already exists – ignore */ }
+    }
+    // Migration: add still_path column for episode thumbnails
+    match conn.execute_batch("ALTER TABLE episodes ADD COLUMN still_path TEXT") {
+        Ok(()) => {}
+        Err(_) => {}
+    }
+    // Migration: add still_url column for episode thumbnail remote URLs
+    match conn.execute_batch("ALTER TABLE episodes ADD COLUMN still_url TEXT") {
+        Ok(()) => {}
+        Err(_) => {}
+    }
+    // Migration: add overview column for episode descriptions
+    match conn.execute_batch("ALTER TABLE episodes ADD COLUMN overview TEXT") {
+        Ok(()) => {}
+        Err(_) => {}
+    }
+    // Migration: add air_date column for episode air dates
+    match conn.execute_batch("ALTER TABLE episodes ADD COLUMN air_date TEXT") {
+        Ok(()) => {}
+        Err(_) => {}
+    }
+    // Migration: add runtime column for episode duration in minutes
+    match conn.execute_batch("ALTER TABLE episodes ADD COLUMN runtime INTEGER") {
+        Ok(()) => {}
+        Err(_) => {}
     }
     Ok(conn)
 }
@@ -251,17 +333,24 @@ pub fn upsert_episode(conn: &Connection, ep: &Episode) -> Result<i64> {
     conn.query_row(
         "INSERT INTO episodes (
             series_id, season_number, episode_number, title, file_path,
-            duration, subtitle_count, status, watched_progress,
-            watched_completed, created_at, updated_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+            duration, subtitle_count, subtitle_paths, status, watched_progress,
+            watched_completed, still_path, still_url, overview, air_date, runtime,
+            created_at, updated_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
         ON CONFLICT(file_path) DO UPDATE SET
             series_id=excluded.series_id,
             season_number=excluded.season_number,
             episode_number=excluded.episode_number,
-            title=excluded.title,
+            title=COALESCE(excluded.title, episodes.title),
             duration=excluded.duration,
             subtitle_count=excluded.subtitle_count,
+            subtitle_paths=excluded.subtitle_paths,
             status=excluded.status,
+            still_path=COALESCE(excluded.still_path, episodes.still_path),
+            still_url=COALESCE(excluded.still_url, episodes.still_url),
+            overview=COALESCE(excluded.overview, episodes.overview),
+            air_date=COALESCE(excluded.air_date, episodes.air_date),
+            runtime=COALESCE(excluded.runtime, episodes.runtime),
             updated_at=datetime('now')
         RETURNING id",
         params![
@@ -272,9 +361,15 @@ pub fn upsert_episode(conn: &Connection, ep: &Episode) -> Result<i64> {
             ep.file_path,
             ep.duration,
             ep.subtitle_count,
+            ep.subtitle_paths,
             ep.status,
             ep.watched_progress,
             ep.watched_completed,
+            ep.still_path,
+            ep.still_url,
+            ep.overview,
+            ep.air_date,
+            ep.runtime,
             ep.created_at,
             ep.updated_at,
         ],
@@ -287,8 +382,9 @@ pub fn upsert_episode(conn: &Connection, ep: &Episode) -> Result<i64> {
 pub fn get_episodes_by_series(conn: &Connection, series_id: i64) -> Result<Vec<Episode>> {
     let mut stmt = conn.prepare(
         "SELECT id, series_id, season_number, episode_number, title, file_path,
-                duration, subtitle_count, status, watched_progress,
-                watched_completed, created_at, updated_at
+                duration, subtitle_count, subtitle_paths, status, watched_progress,
+                watched_completed, still_path, still_url, overview, air_date, runtime,
+                created_at, updated_at
          FROM episodes WHERE series_id = ?1
          ORDER BY season_number, episode_number",
     )?;
@@ -300,8 +396,9 @@ pub fn get_episodes_by_series(conn: &Connection, series_id: i64) -> Result<Vec<E
 pub fn get_episode_by_id(conn: &Connection, id: i64) -> Result<Option<Episode>> {
     let mut stmt = conn.prepare(
         "SELECT id, series_id, season_number, episode_number, title, file_path,
-                duration, subtitle_count, status, watched_progress,
-                watched_completed, created_at, updated_at
+                duration, subtitle_count, subtitle_paths, status, watched_progress,
+                watched_completed, still_path, still_url, overview, air_date, runtime,
+                created_at, updated_at
          FROM episodes WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| episode_from_row(row))?;
@@ -321,12 +418,89 @@ fn episode_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Episode> {
         file_path: row.get(5)?,
         duration: row.get(6)?,
         subtitle_count: row.get(7)?,
-        status: row.get(8)?,
-        watched_progress: row.get(9)?,
-        watched_completed: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
+        subtitle_paths: row.get(8)?,
+        status: row.get(9)?,
+        watched_progress: row.get(10)?,
+        watched_completed: row.get(11)?,
+        still_path: row.get(12)?,
+        still_url: row.get(13)?,
+        overview: row.get(14)?,
+        air_date: row.get(15)?,
+        runtime: row.get(16)?,
+        created_at: row.get(17)?,
+        updated_at: row.get(18)?,
     })
+}
+
+// ── Person ─────────────────────────────────────────────────────────────────
+
+/// Upsert a person by (source, source_id). Returns the row id.
+pub fn upsert_person(conn: &Connection, p: &Person) -> Result<i64> {
+    conn.query_row(
+        "INSERT INTO person (source, source_id, name, role_name, image_url, image_cache)
+         VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(source, source_id) DO UPDATE SET
+            name=excluded.name,
+            role_name=excluded.role_name,
+            image_url=COALESCE(excluded.image_url, person.image_url),
+            image_cache=COALESCE(excluded.image_cache, person.image_cache)
+         RETURNING id",
+        params![
+            p.source,
+            p.source_id,
+            p.name,
+            p.role_name,
+            p.image_url,
+            p.image_cache,
+        ],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+// ── SeriesCast ─────────────────────────────────────────────────────────────
+
+/// Replace all cast entries for a series (delete old, insert new).
+pub fn replace_series_cast(
+    conn: &Connection,
+    series_id: i64,
+    cast: &[(i64, i32)], // (person_id, sort_order)
+) -> Result<()> {
+    conn.execute("DELETE FROM series_cast WHERE series_id = ?1", params![series_id])?;
+    let mut stmt = conn.prepare(
+        "INSERT OR REPLACE INTO series_cast (series_id, person_id, sort_order) VALUES (?1,?2,?3)",
+    )?;
+    for (person_id, sort_order) in cast {
+        stmt.execute(params![series_id, person_id, sort_order])?;
+    }
+    Ok(())
+}
+
+/// Get all cast members for a series, ordered by sort_order.
+/// Returns Vec<(Person, sort_order)>.
+pub fn get_series_cast(conn: &Connection, series_id: i64) -> Result<Vec<(Person, i32)>> {
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.source, p.source_id, p.name, p.role_name, p.image_url, p.image_cache, sc.sort_order
+         FROM person p
+         JOIN series_cast sc ON p.id = sc.person_id
+         WHERE sc.series_id = ?1
+         ORDER BY sc.sort_order",
+    )?;
+    let rows = stmt.query_map(params![series_id], |row| {
+        Ok((
+            Person {
+                id: row.get(0)?,
+                source: row.get(1)?,
+                source_id: row.get(2)?,
+                name: row.get(3)?,
+                role_name: row.get(4)?,
+                image_url: row.get(5)?,
+                image_cache: row.get(6)?,
+            },
+            row.get::<_, i32>(7)?,
+        ))
+    })?;
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 // ── Metadata helpers (Phase 2) ──────────────────────────────────────────────
@@ -429,8 +603,9 @@ pub fn get_episode_path(conn: &Connection, episode_id: i64) -> Result<Option<Str
 pub fn get_resume_episode(conn: &Connection) -> Result<Option<Episode>> {
     conn.query_row(
         "SELECT id, series_id, season_number, episode_number, title, file_path,
-                duration, subtitle_count, status, watched_progress,
-                watched_completed, created_at, updated_at
+                duration, subtitle_count, subtitle_paths, status, watched_progress,
+                watched_completed, still_path, still_url, overview, air_date, runtime,
+                created_at, updated_at
          FROM episodes
          WHERE watched_progress > 0 AND watched_completed = 0
          ORDER BY updated_at DESC
@@ -446,8 +621,9 @@ pub fn get_resume_episode(conn: &Connection) -> Result<Option<Episode>> {
 pub fn get_series_resume_episode(conn: &Connection, series_id: i64) -> Result<Option<Episode>> {
     conn.query_row(
         "SELECT id, series_id, season_number, episode_number, title, file_path,
-                duration, subtitle_count, status, watched_progress,
-                watched_completed, created_at, updated_at
+                duration, subtitle_count, subtitle_paths, status, watched_progress,
+                watched_completed, still_path, still_url, overview, air_date, runtime,
+                created_at, updated_at
          FROM episodes
          WHERE series_id = ?1 AND watched_progress > 0 AND watched_completed = 0
          ORDER BY updated_at DESC

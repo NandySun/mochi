@@ -41,6 +41,9 @@ export default function SettingsMetadata() {
             proxyUrl,
             force: true,
           });
+          // Also pull cast + episode metadata
+          try { await invoke("fetch_cast", { seriesId: all[i].id, tmdbApiKey: tmdbKey }); } catch {}
+          try { await invoke("fetch_episode_metadata", { seriesId: all[i].id, tmdbApiKey: tmdbKey }); } catch {}
         } catch {
           /* skip failed */
         }

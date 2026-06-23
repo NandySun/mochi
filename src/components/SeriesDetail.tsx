@@ -2,11 +2,14 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import type { Series, Episode } from "../types";
+import type { Series, Episode, CastMember } from "../types";
 import { spring } from "../animations/tokens";
 import { useImageSrc } from "../hooks/useImageSrc";
 import { useBackground, GRADIENTS } from "../hooks/useBackground";
+import { useWindowWidth } from "../hooks/useWindowWidth";
 import { BreathingDot } from "./BreathingDot";
+import CastStrip from "./CastStrip";
+import EpisodeModal from "./EpisodeModal";
 
 // ── Type dropdown options ──────────────────────────────────────────────
 
@@ -14,6 +17,7 @@ const TYPE_OPTIONS = [
   { value: "anime", label: "动漫" },
   { value: "tv", label: "影视" },
   { value: "movie", label: "电影" },
+  { value: "variety", label: "综艺" },
   { value: "unknown", label: "未知" },
 ] as const;
 
@@ -39,6 +43,120 @@ const itemVariants = {
   },
 };
 
+// ── Thumbnail gradient variants for episode strip ─────────────────────
+
+const THUMB_GRADIENTS = [
+  "linear-gradient(135deg, #1a1a2e 30%, #2a1a1a 100%)",
+  "linear-gradient(135deg, #1a2a1e 30%, #1a1a2e 100%)",
+  "linear-gradient(135deg, #2e1a1a 30%, #1a1a2e 100%)",
+  "linear-gradient(135deg, #1a1a2e 30%, #1e1a2a 100%)",
+  "linear-gradient(135deg, #1e2a1a 30%, #1a2a1e 100%)",
+  "linear-gradient(135deg, #2a1e2a 30%, #1a1a2e 100%)",
+  "linear-gradient(135deg, #1a2a2e 30%, #1a1e2a 100%)",
+];
+
+// ── Episode strip card (extracted for hook compliance) ────────────
+
+function EpStripCard({
+  episode,
+  isResume,
+  cardW,
+  cardH,
+  onPlay,
+}: {
+  episode: Episode;
+  isResume: boolean;
+  cardW: number;
+  cardH: number;
+  onPlay: (id: number) => void;
+}) {
+  const stillSrc = useImageSrc(episode.still_path ?? null);
+  const thumbGrad = THUMB_GRADIENTS[(episode.episode_number - 1) % THUMB_GRADIENTS.length];
+  const isWatched = !!episode.watched_completed;
+  const disabled = episode.status === "downloading" || episode.status === "missing";
+
+  return (
+    <motion.div
+      data-resume={isResume ? "true" : undefined}
+      whileHover={{ scale: 1.035 }}
+      whileTap={{ scale: 0.97 }}
+      onClick={() => { if (!disabled) onPlay(episode.id); }}
+      style={{
+        flexShrink: 0,
+        width: cardW,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.3 : 1,
+      }}
+    >
+      <div
+        style={{
+          width: cardW,
+          height: cardH,
+          borderRadius: 6,
+          position: "relative",
+          overflow: "hidden",
+          backgroundImage: stillSrc ? `url(${stillSrc})` : thumbGrad,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          outline: isResume ? "2px solid #c47e3a" : undefined,
+          outlineOffset: 2,
+          marginBottom: 7,
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: 7,
+            left: 8,
+            background: "rgba(0,0,0,0.55)",
+            color: "rgba(255,255,255,0.85)",
+            fontSize: 10,
+            padding: "1px 6px",
+            borderRadius: 3,
+            fontWeight: 600,
+          }}
+        >
+          E{episode.episode_number.toString().padStart(2, "0")}
+        </span>
+        {isWatched && (
+          <span
+            style={{
+              position: "absolute",
+              bottom: 7,
+              right: 8,
+              width: 18,
+              height: 18,
+              borderRadius: "50%",
+              background: "#4a9e5c",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 10,
+              color: "#fff",
+            }}
+          >
+            ✓
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          fontSize: 12.5,
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          color: "rgba(232,228,223,0.7)",
+          lineHeight: 1.35,
+        }}
+        title={episode.title ?? undefined}
+      >
+        {episode.title ?? `第 ${episode.episode_number} 集`}
+      </div>
+    </motion.div>
+  );
+}
+
 // ── SeriesDetail ───────────────────────────────────────────────────────
 
 export default function SeriesDetail() {
@@ -49,7 +167,6 @@ export default function SeriesDetail() {
   const [series, setSeries] = useState<Series | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [resumeEp, setResumeEp] = useState<Episode | null>(null);
-  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
   const typeRef = useRef<HTMLDivElement>(null);
   const [refreshingMeta, setRefreshingMeta] = useState(false);
@@ -58,6 +175,30 @@ export default function SeriesDetail() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showKebabMenu, setShowKebabMenu] = useState(false);
   const kebabRef = useRef<HTMLDivElement>(null);
+
+  // Popover / Modal state
+  const [episodeModalOpen, setEpisodeModalOpen] = useState(false);
+
+  // Cast
+  const [castMembers, setCastMembers] = useState<CastMember[]>([]);
+
+  // Episode strip scroll ref (for resume auto-scroll)
+  const epStripRef = useRef<HTMLDivElement>(null);
+
+  // Native wheel interception — React onWheel is sometimes bypassed by
+  // the browser compositor. addEventListener with { passive: false }
+  // guarantees we get first crack at the event.
+  useEffect(() => {
+    const el = epStripRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.scrollBy({ left: e.deltaY * 2.5, behavior: "auto" });
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [episodes]);
 
   const seriesId = id ? Number(id) : null;
 
@@ -101,7 +242,11 @@ export default function SeriesDetail() {
     try {
       const tmdbKey = localStorage.getItem("mochi_tmdb_key") ?? "";
       const proxyUrl = localStorage.getItem("mochi_proxy_url") ?? "";
-      const rootPaths: string[] = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]");
+      const rootDirs = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]");
+      // Support both old (string[]) and new ({path, type}[]) formats
+      const rootPaths: string[] = Array.isArray(rootDirs) && rootDirs.length > 0
+        ? (typeof rootDirs[0] === "string" ? rootDirs : rootDirs.map((d: { path: string }) => d.path))
+        : [];
       const override = editSearchTerm && searchTermInput.trim()
         ? searchTermInput.trim()
         : null;
@@ -115,12 +260,24 @@ export default function SeriesDetail() {
       });
       reload();
       setEditSearchTerm(false);
+      // Auto-fetch cast + episode metadata after series metadata
+      if (tmdbKey) {
+        try { await invoke("fetch_cast", { seriesId, tmdbApiKey: tmdbKey }); loadCast(); } catch {}
+        try { await invoke("fetch_episode_metadata", { seriesId, tmdbApiKey: tmdbKey }); reload(); } catch {}
+      }
       window.dispatchEvent(new CustomEvent("mochi:data-changed"));
     } catch (err) {
       console.error("Failed to refresh metadata:", err);
     }
     setRefreshingMeta(false);
   };
+
+  const loadCast = useCallback(() => {
+    if (seriesId == null) return;
+    invoke<CastMember[]>("get_series_cast", { seriesId })
+      .then(setCastMembers)
+      .catch(() => setCastMembers([]));
+  }, [seriesId]);
 
   const reload = useCallback(() => {
     if (seriesId == null) return;
@@ -129,6 +286,7 @@ export default function SeriesDetail() {
   }, [seriesId]);
 
   useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { loadCast(); }, [loadCast]);
 
   useEffect(() => {
     if (seriesId == null) return;
@@ -149,14 +307,26 @@ export default function SeriesDetail() {
     }));
   }, [series, setBg]);
 
+  // Auto-scroll episode strip to resume position
+  useEffect(() => {
+    if (!resumeEp || !epStripRef.current) return;
+    const timer = setTimeout(() => {
+      const strip = epStripRef.current;
+      if (!strip) return;
+      const resumeCard = strip.querySelector('[data-resume="true"]');
+      if (resumeCard) {
+        const stripRect = strip.getBoundingClientRect();
+        const cardRect = resumeCard.getBoundingClientRect();
+        const offset = cardRect.left - stripRect.left - stripRect.width / 3;
+        strip.scrollBy({ left: offset, behavior: "smooth" });
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [resumeEp]);
+
   const handleBack = useCallback(() => navigate("/"), [navigate]);
 
   const firstEp = episodes.find((e) => e.status === "ready");
-
-  const handlePlay = () => {
-    const ep = resumeEp ?? firstEp;
-    if (ep) navigate(`/play/${ep.id}`);
-  };
 
   const gradient = GRADIENTS[(series?.id ?? 0) % GRADIENTS.length];
   const posterSrc = useImageSrc(series?.poster_path ?? null);
@@ -170,7 +340,22 @@ export default function SeriesDetail() {
         }
       })()
     : [];
-  const synopsisLong = (series?.synopsis?.length ?? 0) > 80;
+
+  // ── Responsive breakpoints ──────────────────────────────────────
+  const winW = useWindowWidth();
+  const bp: "XL" | "L" | "M" | "S" = winW >= 1400 ? "XL" : winW >= 1100 ? "L" : winW >= 900 ? "M" : "S";
+  const r = {
+    posterW: bp === "XL" ? 240 : bp === "L" ? 200 : bp === "M" ? 160 : 130,
+    posterH: bp === "XL" ? 360 : bp === "L" ? 300 : bp === "M" ? 240 : 195,
+    heroGap: bp === "XL" ? 40 : bp === "L" ? 32 : bp === "M" ? 24 : 20,
+    titleSize: bp === "XL" ? 32 : bp === "L" ? 28 : bp === "M" ? 24 : 20,
+    infoSize: bp === "XL" ? 15 : bp === "L" ? 14 : 13,
+    avatarSize: bp === "XL" ? 52 : bp === "L" ? 48 : bp === "M" ? 40 : 36,
+    cardW: bp === "XL" ? 220 : bp === "L" ? 180 : bp === "M" ? 150 : 130,
+    cardH: bp === "XL" ? 124 : bp === "L" ? 101 : bp === "M" ? 84 : 73,
+    hideSubName: bp === "S",
+    maxWidth: bp === "XL" ? 1200 : bp === "L" ? 960 : 720,
+  };
 
   if (!series) {
     return (
@@ -197,7 +382,6 @@ export default function SeriesDetail() {
       {/* ── Return button ──────────────────────────────────────────── */}
       <motion.button
         onClick={handleBack}
-        className="flex items-center justify-center cursor-pointer bg-transparent border-none"
         whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
         whileTap={{ scale: 0.92 }}
         style={{
@@ -209,8 +393,13 @@ export default function SeriesDetail() {
           height: 32,
           borderRadius: "50%",
           background: "rgba(255,255,255,0.08)",
+          border: "none",
           fontSize: 16,
           color: "rgba(255,255,255,0.5)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         ←
@@ -222,34 +411,33 @@ export default function SeriesDetail() {
         initial="hidden"
         animate="visible"
         style={{
-          maxWidth: 720,
+          maxWidth: r.maxWidth,
           margin: "0 auto",
-          padding: "80px 24px 60px",
+          padding: "80px 32px 60px",
         }}
       >
-        {/* ── Top: poster + info ──────────────────────────────────── */}
-        <div
-          style={{ display: "flex", gap: 28, marginBottom: 32 }}
-        >
+        {/* ── Hero: poster + right dual-zone ───────────────────────── */}
+        <div style={{ display: "flex", gap: r.heroGap, marginBottom: 32 }}>
           {/* Poster */}
           <motion.div
             layoutId={`poster-${series.id}`}
             variants={itemVariants}
-            onClick={handlePlay}
             style={{
-              width: 140,
-              height: 210,
+              width: r.posterW,
+              height: r.posterH,
               borderRadius: 8,
               flexShrink: 0,
               boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
               backgroundImage: posterSrc ? `url(${posterSrc})` : gradient,
               backgroundSize: "cover",
               backgroundPosition: "center",
-              cursor: episodes.some((e) => e.status === "ready")
-                ? "pointer"
-                : "default",
+              cursor: episodes.some((e) => e.status === "ready") ? "pointer" : "default",
               position: "relative",
               overflow: "hidden",
+            }}
+            onClick={() => {
+              const ep = resumeEp ?? firstEp;
+              if (ep) navigate(`/play/${ep.id}`);
             }}
           >
             {!series.poster_path && (
@@ -259,7 +447,7 @@ export default function SeriesDetail() {
                   top: "50%",
                   left: "50%",
                   transform: "translate(-50%, -50%)",
-                  fontSize: 42,
+                  fontSize: 52,
                   fontWeight: 700,
                   color: "rgba(255,255,255,0.12)",
                 }}
@@ -267,10 +455,8 @@ export default function SeriesDetail() {
                 {initial}
               </span>
             )}
-            {/* Play overlay — framer-motion hover */}
             <motion.div
               whileHover={{ opacity: 1 }}
-              whileTap={{ opacity: 1 }}
               style={{
                 position: "absolute",
                 inset: 0,
@@ -281,257 +467,152 @@ export default function SeriesDetail() {
                 justifyContent: "center",
               }}
             >
-              <span style={{ fontSize: 36, color: "rgba(255,255,255,0.8)" }}>
-                ▶
-              </span>
+              <span style={{ fontSize: 36, color: "rgba(255,255,255,0.8)" }}>▶</span>
             </motion.div>
           </motion.div>
 
-          {/* Info column */}
+          {/* Hero right: info flow */}
           <motion.div
             variants={itemVariants}
-            style={{ flex: 1, minWidth: 0, paddingTop: 4 }}
+            style={{ flex: 1, minWidth: 0, paddingTop: 2 }}
           >
+            {/* Title */}
             <h1
               style={{
-                fontSize: 28,
+                fontSize: r.titleSize,
                 fontWeight: 700,
                 color: "rgba(255,255,255,0.9)",
-                margin: "0 0 8px",
-                letterSpacing: -0.5,
-                lineHeight: 1.3,
+                margin: "0 0 6px",
+                letterSpacing: 0.3,
+                lineHeight: 1.2,
               }}
             >
               {series.display_name}
             </h1>
 
-            {/* Type dropdown + Kebab menu */}
-            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>类型</span>
-              <div ref={typeRef} style={{ position: "relative" }}>
-                <button
-                  onClick={() => setTypeOpen(!typeOpen)}
-                  className="border-none"
-                  style={{
-                    padding: "4px 26px 4px 10px",
-                    borderRadius: 12,
-                    background: typeOpen
-                      ? "rgba(255,255,255,0.1)"
-                      : "rgba(255,255,255,0.06)",
-                    border: `1px solid ${typeOpen ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)"}`,
-                    color: "rgba(255,255,255,0.5)",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    outline: "none",
-                    position: "relative",
-                  }}
-                >
-                  {typeLabel(series.type)}
-                  <span
-                    style={{
-                      position: "absolute",
-                      right: 8,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      fontSize: 8,
-                      opacity: 0.35,
-                    }}
-                  >
-                    ▾
-                  </span>
-                </button>
-                {typeOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.15 }}
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 4px)",
-                      left: 0,
-                      background: "rgba(14,14,14,0.96)",
-                      backdropFilter: "blur(14px)",
-                      borderRadius: 8,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      overflow: "hidden",
-                      zIndex: 50,
-                      minWidth: 100,
-                    }}
-                  >
-                    {TYPE_OPTIONS.map((opt) => {
-                      const isSelected = opt.value === series.type;
-                      return (
-                        <button
-                          key={opt.value}
-                          onClick={() => {
-                            handleTypeChange(opt.value);
-                            setTypeOpen(false);
-                          }}
-                          className="border-none"
-                          style={{
-                            display: "block",
-                            width: "100%",
-                            padding: "8px 16px 8px 22px",
-                            textAlign: "left",
-                            background: isSelected
-                              ? "rgba(255,255,255,0.06)"
-                              : "transparent",
-                            color: isSelected
-                              ? "rgba(255,255,255,0.7)"
-                              : "rgba(255,255,255,0.4)",
-                            fontSize: 12,
-                            cursor: "pointer",
-                            outline: "none",
-                            position: "relative",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) {
-                              (e.target as HTMLElement).style.background =
-                                "rgba(255,255,255,0.05)";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) {
-                              (e.target as HTMLElement).style.background =
-                                "transparent";
-                            }
-                          }}
-                        >
-                          {isSelected && (
-                            <span
-                              style={{
-                                position: "absolute",
-                                left: 8,
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                width: 4,
-                                height: 4,
-                                borderRadius: "50%",
-                                background: "#c47e3a",
-                              }}
-                            />
-                          )}
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </motion.div>
-                )}
-              </div>
+            {/* Info row: score · year · episode count · type */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: r.infoSize,
+                color: "rgba(255,255,255,0.35)",
+                marginBottom: 14,
+              }}
+            >
+              {series.score != null && (
+                <span style={{ color: "#c47e3a", fontWeight: 600 }}>
+                  {(series.score / 10).toFixed(1)}
+                </span>
+              )}
+              <span style={{ opacity: 0.3 }}>·</span>
+              <span>{series.year ?? "—"}</span>
+              <span style={{ opacity: 0.3 }}>·</span>
+              <span>{episodes.length} 集</span>
+            </div>
 
-              {/* Kebab menu */}
-              <div ref={kebabRef} style={{ position: "relative" }}>
-                {refreshingMeta ? (
-                  <BreathingDot size={16} color="#c47e3a" style={{ cursor: "default" }} />
-                ) : (
+            {/* Type dropdown */}
+            <div style={{ marginBottom: 16 }}>
+              <div ref={typeRef} style={{ position: "relative", display: "inline-block" }}>
                   <button
-                    onClick={() => setShowKebabMenu(!showKebabMenu)}
-                    className="border-none"
+                    onClick={() => setTypeOpen(!typeOpen)}
                     style={{
-                      width: 24,
-                      height: 24,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 6,
-                      background: showKebabMenu
-                        ? "rgba(255,255,255,0.1)"
-                        : "transparent",
-                      color: "rgba(255,255,255,0.35)",
-                      fontSize: 14,
+                      padding: "3px 24px 3px 10px",
+                      borderRadius: 4,
+                      background: typeOpen ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.06)",
+                      border: `1px solid ${typeOpen ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)"}`,
+                      color: "rgba(255,255,255,0.5)",
+                      fontSize: 12,
                       cursor: "pointer",
                       outline: "none",
-                      border: editSearchTerm
-                        ? "1px solid rgba(196,126,58,0.5)"
-                        : "1px solid transparent",
+                      position: "relative",
                     }}
                   >
-                    ⋮
+                    {typeLabel(series.type)}
+                    <span
+                      style={{
+                        position: "absolute",
+                        right: 7,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontSize: 8,
+                        opacity: 0.35,
+                      }}
+                    >
+                      ▾
+                    </span>
                   </button>
-                )}
-                <AnimatePresence>
-                  {showKebabMenu && (
+                  {typeOpen && (
                     <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                      transition={spring.gentle}
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.15 }}
                       style={{
                         position: "absolute",
                         top: "calc(100% + 4px)",
-                        right: 0,
+                        left: 0,
                         background: "rgba(14,14,14,0.96)",
                         backdropFilter: "blur(14px)",
                         borderRadius: 8,
                         border: "1px solid rgba(255,255,255,0.08)",
                         overflow: "hidden",
                         zIndex: 50,
-                        minWidth: 140,
+                        minWidth: 100,
                       }}
                     >
-                      {[
-                        {
-                          label: "↻ 刷新元数据",
-                          action: () => { handleRefreshMeta(); },
-                          selected: false,
-                          title: "仅补充缺失字段，已有数据不会被覆盖",
-                        },
-                        {
-                          label: "✎ 编辑搜索词",
-                          action: () => {
-                            setShowKebabMenu(false);
-                            if (!editSearchTerm) {
-                              setSearchTermInput(series.search_term);
-                              setEditSearchTerm(true);
-                              setTimeout(() => searchInputRef.current?.focus(), 0);
-                            } else {
-                              setEditSearchTerm(false);
-                            }
-                          },
-                          selected: editSearchTerm,
-                        },
-                      ].map((item) => (
-                        <button
-                          key={item.label}
-                          onClick={item.action}
-                          title={"title" in item ? item.title : undefined}
-                          className="border-none"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            width: "100%",
-                            padding: "10px 16px",
-                            textAlign: "left",
-                            background: "transparent",
-                            color: "rgba(255,255,255,0.5)",
-                            fontSize: 12,
-                            cursor: "pointer",
-                            outline: "none",
-                            gap: 8,
-                          }}
-                          onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLElement).style.background =
-                              "rgba(255,255,255,0.06)";
-                          }}
-                          onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLElement).style.background =
-                              "transparent";
-                          }}
-                        >
-                          <span style={{ flex: 1 }}>{item.label}</span>
-                          {item.selected && (
-                            <span style={{ color: "#c47e3a", fontSize: 10 }}>•</span>
-                          )}
-                        </button>
-                      ))}
+                      {TYPE_OPTIONS.map((opt) => {
+                        const isSelected = opt.value === series.type;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => { handleTypeChange(opt.value); setTypeOpen(false); }}
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              padding: "8px 16px 8px 22px",
+                              textAlign: "left",
+                              background: isSelected ? "rgba(255,255,255,0.06)" : "transparent",
+                              color: isSelected ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              border: "none",
+                              outline: "none",
+                              position: "relative",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) (e.target as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) (e.target as HTMLElement).style.background = "transparent";
+                            }}
+                          >
+                            {isSelected && (
+                              <span
+                                style={{
+                                  position: "absolute",
+                                  left: 8,
+                                  top: "50%",
+                                  transform: "translateY(-50%)",
+                                  width: 4,
+                                  height: 4,
+                                  borderRadius: "50%",
+                                  background: "#c47e3a",
+                                }}
+                              />
+                            )}
+                            {opt.label}
+                          </button>
+                        );
+                      })}
                     </motion.div>
                   )}
-                </AnimatePresence>
+                </div>
               </div>
 
-              {/* Edit search term inline input */}
+              {/* Edit search term inline */}
               {editSearchTerm && (
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -585,249 +666,336 @@ export default function SeriesDetail() {
                   </button>
                 </div>
               )}
-            </div>
 
-            {/* Metadata loading indicator */}
-            <AnimatePresence>
-              {refreshingMeta && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  style={{
-                    fontSize: 11,
-                    color: "rgba(255,255,255,0.25)",
-                    marginBottom: 8,
-                  }}
-                >
-                  正在拉取元数据…
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {series.score != null && (
-              <div
-                style={{
-                  fontSize: 36,
-                  fontWeight: 700,
-                  color: "#c47e3a",
-                  lineHeight: 1,
-                  marginBottom: 8,
-                }}
-              >
-                {(series.score / 10).toFixed(1)}
-              </div>
-            )}
-
-            <div
-              style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.35)",
-                marginBottom: 8,
-              }}
-            >
-              {[
-                genres[0] ?? null,
-                `${episodes.length} 集`,
-                series.score ? `★${(series.score / 10).toFixed(1)}` : null,
-                series.year?.toString(),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-
-            {genres.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
-                  marginBottom: 12,
-                }}
-              >
-                {genres.map((g) => (
-                  <span
-                    key={g}
-                    style={{
-                      fontSize: 11,
-                      padding: "3px 10px",
-                      borderRadius: 10,
-                      background: "rgba(255,255,255,0.08)",
-                      color: "rgba(255,255,255,0.5)",
-                    }}
+              {/* Refreshing indicator */}
+              <AnimatePresence>
+                {refreshingMeta && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginBottom: 8 }}
                   >
-                    {g}
-                  </span>
-                ))}
-              </div>
-            )}
+                    正在拉取元数据…
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            {/* Action buttons */}
-            {resumeEp ? (
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <motion.button
-                  onClick={() => navigate(`/play/${resumeEp.id}`)}
-                  className="cursor-pointer border-none"
-                  whileHover={{ backgroundColor: "rgba(255,255,255,0.2)" }}
-                  whileTap={{ scale: 0.96 }}
-                  style={{
-                    padding: "10px 36px",
-                    borderRadius: 22,
-                    background: "rgba(255,255,255,0.12)",
-                    color: "rgba(255,255,255,0.75)",
-                    fontSize: 15,
-                    fontWeight: 500,
-                  }}
-                >
-                  继续 E{resumeEp.episode_number.toString().padStart(2, "0")}
-                </motion.button>
-                {resumeEp.id !== firstEp?.id && (
+              {/* Action buttons */}
+              {resumeEp ? (
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                   <motion.button
-                    onClick={() => firstEp && navigate(`/play/${firstEp.id}`)}
-                    className="cursor-pointer border-none"
-                    whileHover={{ opacity: 0.8 }}
+                    onClick={() => navigate(`/play/${resumeEp.id}`)}
+                    whileHover={{ filter: "brightness(1.1)" }}
                     whileTap={{ scale: 0.96 }}
                     style={{
-                      fontSize: 12,
-                      opacity: 0.5,
-                      color: "rgba(255,255,255,0.6)",
-                      background: "transparent",
-                      padding: "6px 12px",
-                      borderRadius: 14,
+                      padding: "8px 18px",
+                      borderRadius: 8,
+                      background: "#c47e3a",
+                      color: "#fff",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      border: "none",
+                      fontFamily: "inherit",
                     }}
                   >
-                    从头开始
+                    ▶ 继续 E{resumeEp.episode_number.toString().padStart(2, "0")}
                   </motion.button>
-                )}
-              </div>
-            ) : firstEp ? (
-              <motion.button
-                onClick={handlePlay}
-                className="cursor-pointer border-none"
-                whileHover={{ backgroundColor: "rgba(255,255,255,0.2)" }}
-                whileTap={{ scale: 0.96 }}
-                style={{
-                  padding: "10px 36px",
-                  borderRadius: 22,
-                  background: "rgba(255,255,255,0.12)",
-                  color: "rgba(255,255,255,0.75)",
-                  fontSize: 15,
-                  fontWeight: 500,
-                }}
-              >
-                播放
-              </motion.button>
-            ) : (
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
-                无可用剧集
-              </span>
-            )}
+                  {resumeEp.id !== firstEp?.id && (
+                    <motion.button
+                      onClick={() => firstEp && navigate(`/play/${firstEp.id}`)}
+                      whileHover={{ background: "rgba(255,255,255,0.1)" }}
+                      whileTap={{ scale: 0.96 }}
+                      style={{
+                        padding: "8px 18px",
+                        borderRadius: 8,
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.75)",
+                        fontSize: 13,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      从头开始
+                    </motion.button>
+                  )}
+                </div>
+              ) : firstEp ? (
+                <motion.button
+                  onClick={() => navigate(`/play/${firstEp.id}`)}
+                  whileHover={{ background: "rgba(255,255,255,0.2)" }}
+                  whileTap={{ scale: 0.96 }}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    background: "#c47e3a",
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: "none",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  ▶ 播放
+                </motion.button>
+              ) : (
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>无可用剧集</span>
+              )}
+
+              {/* Genres */}
+              {genres.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
+                  {genres.map((g) => (
+                    <span
+                      key={g}
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 10px",
+                        borderRadius: 10,
+                        background: "rgba(255,255,255,0.08)",
+                        color: "rgba(255,255,255,0.5)",
+                      }}
+                    >
+                      {g}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Synopsis — scrollable capped area */}
+              {series.synopsis && (
+                <>
+                  <style>{`.synopsis-scroll::-webkit-scrollbar { width: 4px; } .synopsis-scroll::-webkit-scrollbar-track { background: transparent; } .synopsis-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; } .synopsis-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }`}</style>
+                  <div
+                    className="synopsis-scroll"
+                    style={{
+                      margin: "20px 0 0",
+                      maxWidth: 720,
+                      maxHeight: 120,
+                      overflowY: "auto",
+                      scrollbarWidth: "thin" as const,
+                      scrollbarColor: "rgba(255,255,255,0.08) transparent",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: 13.5,
+                        lineHeight: 1.85,
+                        color: "rgba(232,228,223,0.45)",
+                      }}
+                    >
+                      {series.synopsis}
+                    </p>
+                  </div>
+                </>
+              )}
           </motion.div>
         </div>
 
-        {/* ── Synopsis (animated expand/collapse) ──────────────────── */}
-        {series.synopsis && (
-          <motion.div variants={itemVariants} style={{ marginBottom: 32 }}>
-            <motion.div
-              animate={{ maxHeight: synopsisExpanded ? 2000 : 80 }}
-              transition={{ duration: 0.35, ease: "easeInOut" }}
-              style={{ overflow: "hidden" }}
+        {/* ── Cast section (below hero, left-aligned) ──────────────── */}
+        {castMembers.length > 0 && (
+          <motion.div variants={itemVariants} style={{ marginBottom: 24 }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: "rgba(232,228,223,0.33)",
+                textTransform: "uppercase",
+                letterSpacing: 1.5,
+                marginBottom: 8,
+              }}
             >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 14,
-                  color: "rgba(255,255,255,0.3)",
-                  lineHeight: 1.9,
-                }}
-              >
-                {series.synopsis}
-              </p>
-            </motion.div>
-            {synopsisLong && (
-              <motion.button
-                onClick={() => setSynopsisExpanded(!synopsisExpanded)}
-                className="border-none"
-                whileHover={{ color: "rgba(255,255,255,0.45)" }}
-                whileTap={{ scale: 0.96 }}
-                style={{
-                  fontSize: 12,
-                  color: "rgba(255,255,255,0.25)",
-                  background: "none",
-                  cursor: "pointer",
-                  padding: "4px 0",
-                  marginTop: 4,
-                }}
-              >
-                {synopsisExpanded ? "收起 ▲" : "展开 ▼"}
-              </motion.button>
-            )}
+              演员
+            </div>
+            <CastStrip castMembers={castMembers} avatarSize={r.avatarSize} hideSubName={r.hideSubName} />
           </motion.div>
         )}
 
-        {/* ── Episode list ─────────────────────────────────────────── */}
-        <motion.div variants={itemVariants}>
-          <div
+        {/* ── Episode strip ────────────────────────────────────────── */}
+        {episodes.length > 0 && (
+          <motion.div variants={itemVariants} style={{ marginTop: 32 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 12,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "rgba(232,228,223,0.33)",
+                  textTransform: "uppercase",
+                  letterSpacing: 1.5,
+                }}
+              >
+                剧集
+              </span>
+              <span
+                onClick={() => setEpisodeModalOpen(true)}
+                style={{
+                  fontSize: 14,
+                  color: "rgba(232,228,223,0.33)",
+                  cursor: "pointer",
+                  userSelect: "none",
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  (e.target as HTMLElement).style.color = "rgba(232,228,223,0.7)";
+                  (e.target as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.color = "rgba(232,228,223,0.33)";
+                  (e.target as HTMLElement).style.background = "transparent";
+                }}
+                title="查看全部剧集"
+              >
+                ▤
+              </span>
+            </div>
+
+            <div style={{ position: "relative" }}>
+              <div
+                ref={epStripRef}
+                style={{
+                  display: "flex",
+                  gap: 14,
+                  overflowX: "auto",
+                  padding: "4px 2px 8px",
+                  scrollbarWidth: "none",
+                  scrollBehavior: "smooth",
+                }}
+              >
+                <style>{`.ep-strip::-webkit-scrollbar { display: none; }`}</style>
+                {episodes.map((ep) => (
+                  <EpStripCard
+                    key={ep.id}
+                    episode={ep}
+                    isResume={ep.id === resumeEp?.id}
+                    cardW={r.cardW}
+                    cardH={r.cardH}
+                    onPlay={(epId) => navigate(`/play/${epId}`)}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </motion.div>
+
+      {/* ── Wrench FAB (bottom-right) ──────────────────────────────── */}
+      <div ref={kebabRef} style={{ position: "fixed", bottom: 24, right: 24, zIndex: 60 }}>
+        {refreshingMeta ? (
+          <BreathingDot size={20} color="#c47e3a" style={{ cursor: "default" }} />
+        ) : (
+          <motion.button
+            onClick={() => setShowKebabMenu(!showKebabMenu)}
+            whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+            whileTap={{ scale: 0.92 }}
             style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.2)",
-              textTransform: "uppercase",
-              letterSpacing: 2,
-              marginBottom: 14,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: showKebabMenu ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.4)",
+              fontSize: 16,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              outline: "none",
             }}
           >
-            剧集
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {episodes.map((ep) => {
-              const disabled =
-                ep.status === "downloading" || ep.status === "missing";
-              const isWatched = ep.watched_completed;
-              const bg = isWatched
-                ? "rgba(90,170,150,0.12)"
-                : "rgba(255,255,255,0.05)";
-              const border = isWatched
-                ? "rgba(90,170,150,0.2)"
-                : "rgba(255,255,255,0.08)";
-              const color = isWatched
-                ? "rgba(90,170,150,0.6)"
-                : "rgba(255,255,255,0.45)";
-              return (
-                <motion.button
-                  key={ep.id}
-                  disabled={disabled}
-                  onClick={() => {
-                    if (!disabled) navigate(`/play/${ep.id}`);
-                  }}
-                  whileHover={
-                    !disabled && !isWatched
-                      ? {
-                          scale: 1.05,
-                          backgroundColor: "rgba(255,255,255,0.1)",
-                        }
-                      : {}
-                  }
-                  whileTap={!disabled ? { scale: 0.93 } : {}}
-                  animate={{ opacity: disabled ? 0.25 : 1 }}
+            🔧
+          </motion.button>
+        )}
+        <AnimatePresence>
+          {showKebabMenu && (
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={spring.gentle}
+              style={{
+                position: "absolute",
+                bottom: "calc(100% + 8px)",
+                right: 0,
+                background: "rgba(14,14,14,0.96)",
+                backdropFilter: "blur(14px)",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.08)",
+                overflow: "hidden",
+                zIndex: 50,
+                minWidth: 150,
+              }}
+            >
+              {[
+                {
+                  label: "↻ 刷新元数据",
+                  action: () => { handleRefreshMeta(); },
+                },
+                {
+                  label: editSearchTerm ? "✓ 编辑搜索词" : "✎ 编辑搜索词",
+                  action: () => {
+                    setShowKebabMenu(false);
+                    if (!editSearchTerm) {
+                      setSearchTermInput(series.search_term);
+                      setEditSearchTerm(true);
+                      setTimeout(() => searchInputRef.current?.focus(), 0);
+                    } else {
+                      setEditSearchTerm(false);
+                    }
+                  },
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={item.action}
                   style={{
-                    width: 56,
-                    height: 38,
-                    borderRadius: 8,
-                    background: bg,
-                    border: `1px solid ${border}`,
-                    color,
-                    fontSize: 13,
-                    cursor: disabled ? "default" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    width: "100%",
+                    padding: "10px 16px",
+                    textAlign: "left",
+                    background: "transparent",
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    border: "none",
+                    outline: "none",
+                    gap: 8,
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "transparent";
                   }}
                 >
-                  {ep.episode_number.toString().padStart(2, "0")}
-                </motion.button>
-              );
-            })}
-          </div>
-        </motion.div>
-      </motion.div>
+                  {item.label}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ── EpisodeModal ───────────────────────────────────────────── */}
+      <EpisodeModal
+        episodes={episodes}
+        resumeEpId={resumeEp?.id ?? null}
+        isOpen={episodeModalOpen}
+        onClose={() => setEpisodeModalOpen(false)}
+        onPlay={(epId) => navigate(`/play/${epId}`)}
+      />
     </div>
   );
 }

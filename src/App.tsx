@@ -12,6 +12,7 @@ import PosterWall from "./components/PosterWall";
 import SeriesDetail from "./components/SeriesDetail";
 import VideoPlayer from "./components/VideoPlayer";
 import Settings from "./components/Settings";
+import Onboarding from "./components/Onboarding";
 import WindowResizeHandles from "./components/WindowResizeHandles";
 
 function GlobalBackground() {
@@ -97,6 +98,15 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTrayTip, setShowTrayTip] = useState(false);
+  const [showBatchDone, setShowBatchDone] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // ── First-launch onboarding ───────────────────────────────────────
+  useEffect(() => {
+    if (localStorage.getItem("mochi_onboarding_complete") !== "1") {
+      setShowOnboarding(true);
+    }
+  }, []);
 
   // ── First-time tray minimize toast ────────────────────────────────
   useEffect(() => {
@@ -108,6 +118,16 @@ export default function App() {
       setTimeout(() => setShowTrayTip(false), 3000);
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
+  }, []);
+
+  // ── Batch metadata fetch completion banner ────────────────────────
+  useEffect(() => {
+    const onComplete = () => {
+      setShowBatchDone(true);
+      setTimeout(() => setShowBatchDone(false), 4000);
+    };
+    window.addEventListener("mochi:batch-fetch-complete", onComplete);
+    return () => window.removeEventListener("mochi:batch-fetch-complete", onComplete);
   }, []);
 
   // ── Global keyboard shortcuts ───────────────────────────────────────
@@ -130,6 +150,19 @@ export default function App() {
           <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
             <GlobalBackground />
             <main style={{ flex: 1, position: "relative", zIndex: 1, overflow: "hidden" }}>
+              {/* ── First-launch onboarding overlay ────────────────── */}
+              <AnimatePresence>
+                {showOnboarding && (
+                  <Onboarding
+                    onComplete={() => setShowOnboarding(false)}
+                    onOpenSettings={() => {
+                      setShowSettings(true);
+                      setShowOnboarding(false);
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+
               <LayoutGroup>
                 <AnimatePresence mode="wait">
                   <Routes location={location} key={location.pathname}>
@@ -196,6 +229,37 @@ export default function App() {
                 }}
               >
                 Mochi 已最小化到系统托盘，右键图标可退出
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Batch metadata fetch done banner ──────────────────── */}
+          <AnimatePresence>
+            {showBatchDone && (
+              <motion.div
+                key="batch-done"
+                initial={{ opacity: 0, y: -16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                style={{
+                  position: "fixed",
+                  top: 44,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 10000,
+                  padding: "8px 20px",
+                  borderRadius: 10,
+                  background: "rgba(30,40,24,0.88)",
+                  backdropFilter: "blur(10px)",
+                  border: "1px solid rgba(126,196,58,0.2)",
+                  color: "rgba(190,255,180,0.85)",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                }}
+              >
+                元数据拉取完成 ✓
               </motion.div>
             )}
           </AnimatePresence>

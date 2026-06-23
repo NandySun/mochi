@@ -64,9 +64,54 @@ struct TmdbSearchResponse {
     results: Vec<TmdbSearchResult>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct TmdbErrorResponse {
     status_message: Option<String>,
+}
+
+/// A single episode within a season response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmdbEpisodeResult {
+    #[serde(rename = "episode_number")]
+    pub episode_number: i32,
+    pub name: Option<String>,
+    pub overview: Option<String>,
+    #[serde(rename = "still_path")]
+    pub still_path: Option<String>,
+    #[serde(rename = "air_date")]
+    pub air_date: Option<String>,
+    pub runtime: Option<i32>,
+    #[serde(rename = "season_number")]
+    pub season_number: i32,
+}
+
+/// Full season detail response from /tv/{id}/season/{number}.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmdbSeasonDetail {
+    #[serde(rename = "season_number")]
+    pub season_number: i32,
+    pub name: Option<String>,
+    pub overview: Option<String>,
+    #[serde(rename = "poster_path")]
+    pub poster_path: Option<String>,
+    pub episodes: Vec<TmdbEpisodeResult>,
+}
+
+/// A cast member from TMDB credits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmdbCastMember {
+    pub id: i64,
+    pub name: String,
+    pub character: Option<String>,
+    #[serde(rename = "profile_path")]
+    pub profile_path: Option<String>,
+    pub order: i32,
+}
+
+/// Full credits response from /tv/{id}/credits or /movie/{id}/credits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmdbCreditsResponse {
+    pub cast: Vec<TmdbCastMember>,
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -134,6 +179,62 @@ impl TmdbClient {
     ) -> Result<TmdbSearchResult, String> {
         let url = format!("{}/movie/{}", TMDB_API_BASE, id);
         self.do_detail(&url, language).await
+    }
+
+    // ── Season (episode metadata) ──────────────────────────────────────────
+
+    /// Get season details including episode list with stills and titles.
+    pub async fn get_season(
+        &self,
+        tv_id: i64,
+        season_number: i32,
+        language: &str,
+    ) -> Result<TmdbSeasonDetail, String> {
+        let url = format!("{}/tv/{}/season/{}", TMDB_API_BASE, tv_id, season_number);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[
+                ("api_key", self.api_key.as_str()),
+                ("language", language),
+            ])
+            .send()
+            .await
+            .map_err(|e| format!("TMDB season request failed: {e}"))?;
+
+        Self::check_response(&resp).await?;
+
+        resp.json::<TmdbSeasonDetail>()
+            .await
+            .map_err(|e| format!("TMDB season parse error: {e}"))
+    }
+
+    // ── Credits (cast) ────────────────────────────────────────────────────
+
+    /// Get cast & crew for a TV show or movie.
+    pub async fn get_credits(
+        &self,
+        media_type: &str, // "tv" or "movie"
+        id: i64,
+        language: &str,
+    ) -> Result<TmdbCreditsResponse, String> {
+        let url = format!("{}/{}/{}/credits", TMDB_API_BASE, media_type, id);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[
+                ("api_key", self.api_key.as_str()),
+                ("language", language),
+            ])
+            .send()
+            .await
+            .map_err(|e| format!("TMDB credits request failed: {e}"))?;
+
+        Self::check_response(&resp).await?;
+
+        resp.json::<TmdbCreditsResponse>()
+            .await
+            .map_err(|e| format!("TMDB credits parse error: {e}"))
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-use crate::db::{self, Episode, Series};
+use crate::db::{self, Episode, Person, Series};
 use crate::metadata::{self, MetadataResult};
 use crate::scanner::{self, ScanResult};
 use rusqlite::Connection;
@@ -38,8 +38,8 @@ fn persist_metadata_result(
 // ── Scan command ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn scan_library(state: State<AppState>, root_path: String) -> Result<ScanResult, String> {
-    let result = scanner::scan_library(&root_path)?;
+pub fn scan_library(state: State<AppState>, root_path: String, root_type: Option<String>) -> Result<ScanResult, String> {
+    let result = scanner::scan_library(&root_path, root_type.as_deref())?;
 
     // Persist scan results to DB
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -67,6 +67,11 @@ pub fn scan_library(state: State<AppState>, root_path: String) -> Result<ScanRes
         let series_id = db::upsert_series(&conn, &series).map_err(|e| e.to_string())?;
 
         for ep_scan in &series_scan.episodes {
+            let subtitle_paths_json = if ep_scan.subtitle_paths.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&ep_scan.subtitle_paths).unwrap_or_default())
+            };
             let episode = Episode {
                 id: 0,
                 series_id,
@@ -76,9 +81,15 @@ pub fn scan_library(state: State<AppState>, root_path: String) -> Result<ScanRes
                 file_path: ep_scan.file_path.clone(),
                 duration: 0,
                 subtitle_count: ep_scan.subtitle_count,
+                subtitle_paths: subtitle_paths_json,
                 status: ep_scan.status.clone(),
                 watched_progress: 0,
                 watched_completed: 0,
+                still_path: None,
+                still_url: None,
+                overview: None,
+                air_date: None,
+                runtime: None,
                 created_at: String::new(),
                 updated_at: String::new(),
             };
@@ -228,9 +239,12 @@ pub async fn fetch_metadata(
         metadata::fetch_metadata(&effective_term, &effective_type, tmdb_api_key.as_deref(), proxy_url.as_deref(), force).await?
     };
 
-    // Always trust filesystem type over API metadata for the type field.
-    // API metadata may be wrong (e.g. TMDB fallback pollution).
-    result.series_type = effective_type.clone();
+    // Trust filesystem type only when it has a known type.
+    // If filesystem type is "unknown", let the API result stand — this allows
+    // metadata refresh to fix series that weren't pre-organized correctly.
+    if effective_type != "unknown" {
+        result.series_type = effective_type.clone();
+    }
 
     // ── TMDB backdrop enrichment for anime ────────────────────────────
     // Bangumi doesn't provide banners/backdrops. When we already have a
@@ -655,4 +669,66 @@ pub fn window_close(window: tauri::Window, state: State<AppState>) {
     } else {
         window.hide().ok();
     }
+}
+
+// ── Phase 3: Cast & Episode Metadata ───────────────────────────────────────
+
+/// Fetch episode metadata (titles, stills, overviews) from TMDB for a series.
+/// Anime series without a tmdb_id will trigger a TMDB TV search first.
+#[tauri::command]
+pub async fn fetch_episode_metadata(
+    state: State<'_, AppState>,
+    series_id: i64,
+    tmdb_api_key: Option<String>,
+) -> Result<usize, String> {
+    let proxy_url = std::env::var("MOCHI_PROXY_URL").ok();
+    let key = tmdb_api_key.unwrap_or_default();
+
+    if key.is_empty() {
+        return Err("TMDB API key not configured".to_string());
+    }
+
+    crate::metadata::fetch_episode_metadata(&state.db, series_id, &key, proxy_url.as_deref()).await
+}
+
+/// Fetch cast (actors/characters) for a series.
+/// Routes: anime → Bangumi characters, tv/movie → TMDB credits.
+#[tauri::command]
+pub async fn fetch_cast(
+    state: State<'_, AppState>,
+    series_id: i64,
+    tmdb_api_key: Option<String>,
+) -> Result<usize, String> {
+    let proxy_url = std::env::var("MOCHI_PROXY_URL").ok();
+
+    crate::metadata::fetch_cast(&state.db, series_id, tmdb_api_key.as_deref(), proxy_url.as_deref()).await
+}
+
+/// Get the stored cast list for a series.
+/// Returns Vec<(Person, sort_order)>.
+#[tauri::command]
+pub fn get_series_cast(
+    state: State<AppState>,
+    series_id: i64,
+) -> Result<Vec<(Person, i32)>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::get_series_cast(&conn, series_id).map_err(|e| e.to_string())
+}
+
+// ── Onboarding ───────────────────────────────────────────────────────────────
+
+/// Create the recommended library folder structure at the given path.
+/// Creates anime/, movie/, tv/, variety/ subdirectories.
+#[tauri::command]
+pub fn create_library_structure(base_path: String) -> Result<(), String> {
+    let base = std::path::Path::new(&base_path);
+    if !base.is_dir() {
+        return Err(format!("path not found: {base_path}"));
+    }
+    for sub in &["anime", "movie", "tv", "variety"] {
+        let sub_path = base.join(sub);
+        std::fs::create_dir_all(&sub_path)
+            .map_err(|e| format!("create {sub} failed: {e}"))?;
+    }
+    Ok(())
 }

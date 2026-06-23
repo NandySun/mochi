@@ -14,6 +14,8 @@ const FILTERS = [
   { key: "all", label: "全部" },
   { key: "anime", label: "动漫" },
   { key: "tv", label: "影视" },
+  { key: "movie", label: "电影" },
+  { key: "variety", label: "综艺" },
 ] as const;
 
 // ── PosterCard ─────────────────────────────────────────────────────────────
@@ -85,7 +87,7 @@ function PosterCard({
 
 export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [series, setSeries] = useState<Series[]>([]);
-  const [filter, setFilter] = useState<"resume" | "all" | "anime" | "tv">("all");
+  const [filter, setFilter] = useState<"resume" | "all" | "anime" | "tv" | "movie" | "variety">("all");
   const [resumeEp, setResumeEp] = useState<{ id: number; series_id: number; episode_number: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [ambiguousSeries, setAmbiguousSeries] = useState<SeriesScan[]>(() => {

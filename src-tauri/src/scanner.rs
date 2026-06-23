@@ -66,12 +66,12 @@ fn is_excluded(filename: &str) -> bool {
     EXCLUDED_KEYWORDS.iter().any(|kw| lower.contains(kw))
 }
 
-/// Count subtitle files matching a given video stem.
+/// Count subtitle files matching a given video stem and collect their paths.
 fn count_subtitles(
     root_subs: &[PathBuf],
     sub_dir_files: &[PathBuf],
     video_stem_lower: &str,
-) -> i32 {
+) -> (i32, Vec<String>) {
     let match_sub = |sub: &&PathBuf| -> bool {
         sub.file_stem()
             .and_then(|s| s.to_str())
@@ -83,8 +83,20 @@ fn count_subtitles(
             })
             .unwrap_or(false)
     };
-    root_subs.iter().filter(match_sub).count() as i32
-        + sub_dir_files.iter().filter(match_sub).count() as i32
+    let matched_root: Vec<String> = root_subs
+        .iter()
+        .filter(match_sub)
+        .map(|p| normalize_path(p))
+        .collect();
+    let matched_sub: Vec<String> = sub_dir_files
+        .iter()
+        .filter(match_sub)
+        .map(|p| normalize_path(p))
+        .collect();
+    let count = (matched_root.len() + matched_sub.len()) as i32;
+    let mut paths = matched_root;
+    paths.extend(matched_sub);
+    (count, paths)
 }
 
 /// Canonicalize and normalize a path for mpv compatibility.
@@ -130,6 +142,7 @@ pub struct EpisodeScan {
     pub season_number: i32,
     pub title: Option<String>,
     pub subtitle_count: i32,
+    pub subtitle_paths: Vec<String>,
     pub status: String, // "ready" | "downloading"
     /// How the episode number was determined: "regex" (C1 pattern match) or "fallback" (C2 auto-assignment).
     /// Reserved for future UI marking; frontend does not consume this yet.
@@ -152,7 +165,7 @@ fn parse_folder_name(folder: &str) -> (String, String) {
 
 /// Folder name suffix regex for type-hint: "黄泉使者 [tv]" → type=tv
 static FOLDER_SUFFIX_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[(anime|tv|movie)\]$").unwrap());
+    LazyLock::new(|| Regex::new(r"\[(anime|tv|movie|variety)\]$").unwrap());
 
 /// Extract type-hint from folder name suffix, e.g. "黄泉使者 [tv]" → Some("tv").
 /// Returns (display_name_without_suffix, type_hint).
@@ -216,6 +229,7 @@ pub fn resolve_type_from_filesystem(root_paths: &[String], folder_name: &str) ->
         ("anime", "anime"),
         ("tv", "tv"),
         ("movie", "movie"),
+        ("variety", "variety"),
         ("teleplay", "tv"),
     ];
 
@@ -301,6 +315,9 @@ fn filename_lower(path: &Path) -> Option<String> {
 /// (case-insensitive), they are treated as type-hint containers: all series
 /// inside inherit that type. This replaces language-based guessing in dual-search.
 ///
+/// If `root_type` is provided (and not "auto"), all depth-1 series inherit this type
+/// unless overridden by a more specific source (.mochi, folder suffix).
+///
 /// If no type-hint folders exist, depth-1 folders are treated as series directly
 /// (backward compatible with Phase 1 flat layout).
 ///
@@ -311,9 +328,9 @@ fn filename_lower(path: &Path) -> Option<String> {
 ///     黄泉使者_Yomi no Tsugai\      → type=anime
 ///   tv\
 ///     太阳星辰\                     → type=tv
-///   上伊那牡丹_Kamiina Botan\        ← no hint → type=unknown
+///   上伊那牡丹_Kamiina Botan\        ← no hint → type=unknown (or root_type if set)
 /// ```
-pub fn scan_library(root_path: &str) -> Result<ScanResult, String> {
+pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResult, String> {
     let root = Path::new(root_path);
     if !root.is_dir() {
         return Err(format!("Root path is not a directory: {}", root_path));
@@ -323,6 +340,7 @@ pub fn scan_library(root_path: &str) -> Result<ScanResult, String> {
         ("anime", "anime"),
         ("tv", "tv"),
         ("movie", "movie"),
+        ("variety", "variety"),
         ("teleplay", "tv"),
     ];
 
@@ -417,9 +435,14 @@ pub fn scan_library(root_path: &str) -> Result<ScanResult, String> {
                 continue;
             }
 
-            // Multi-source type-hint resolution (no parent hint for root-level series)
+            // Root-level type override: if the user assigned a type to this root directory,
+            // use it as the default parent hint for series not in type-hint containers.
+            let root_parent_hint = root_type
+                .filter(|t| *t != "auto" && !t.is_empty());
+
+            // Multi-source type-hint resolution
             let (resolved_type, display_override) =
-                resolve_type_hint(entry.path(), &folder_name, None);
+                resolve_type_hint(entry.path(), &folder_name, root_parent_hint);
 
             let base_display = display_override.unwrap_or_else(|| folder_name.clone());
             let (display_name, search_term) = parse_folder_name(&base_display);
@@ -534,6 +557,7 @@ fn cluster_flat_files(
                 season_number: *season_number,
                 title: None,
                 subtitle_count: 0,
+                subtitle_paths: Vec::new(),
                 status: "ready".to_string(),
                 match_method: "regex".to_string(),
             });
@@ -562,6 +586,7 @@ fn cluster_flat_files(
                 season_number: 1,
                 title: None,
                 subtitle_count: 0,
+                subtitle_paths: Vec::new(),
                 status: "ready".to_string(),
                 match_method: "fallback".to_string(),
             });
@@ -770,7 +795,7 @@ fn scan_series_folder(
             "ready".to_string()
         };
 
-        let subtitle_count = count_subtitles(
+        let (subtitle_count, subtitle_paths) = count_subtitles(
             &subtitle_files, &sub_dir_files, &stem_lower);
 
         let abs_path = normalize_path(video_path);
@@ -782,6 +807,7 @@ fn scan_series_folder(
             season_number: *season_number,
             title: None,
             subtitle_count,
+            subtitle_paths,
             status,
             match_method: "regex".to_string(),
         });
@@ -823,7 +849,7 @@ fn scan_series_folder(
             "ready".to_string()
         };
 
-        let subtitle_count = count_subtitles(
+        let (subtitle_count, subtitle_paths) = count_subtitles(
             &subtitle_files, &sub_dir_files, &stem_lower);
 
         let abs_path = normalize_path(video_path);
@@ -835,6 +861,7 @@ fn scan_series_folder(
             season_number: 1,
             title: None,
             subtitle_count,
+            subtitle_paths,
             status,
             match_method: "fallback".to_string(),
         });

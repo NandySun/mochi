@@ -160,6 +160,9 @@ pub fn run() {
             commands::get_cache_size,
             commands::clear_cache,
             commands::read_image_base64,
+            commands::get_series_cast,
+            commands::fetch_cast,
+            commands::fetch_episode_metadata,
             commands::get_app_version,
             commands::get_close_behavior,
             commands::set_close_behavior,
@@ -167,6 +170,7 @@ pub fn run() {
             commands::window_minimize,
             commands::window_toggle_maximize,
             commands::window_close,
+            commands::create_library_structure,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

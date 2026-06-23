@@ -98,8 +98,20 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
         mpv.observe(ep.id, ep.watched_progress);
         await mpv.loadFile(filePath);
         if (cancelled) return;
+
+        // Load external subtitle files
+        if (ep.subtitle_paths && ep.subtitle_paths.length > 0) {
+          mpv.loadSubtitleFiles(ep.subtitle_paths);
+        }
+
         hasPlayedNaturallyRef.current = false;
         autoNextTriggeredRef.current = false;
+
+        // Refresh track list after file and external subs are loaded
+        setTimeout(() => { mpv.refreshTracks(); }, 800);
+        if (ep.subtitle_paths && ep.subtitle_paths.length > 0) {
+          setTimeout(() => { mpv.refreshTracks(); }, 1600);
+        }
 
         requestAnimationFrame(() => {
           const videoArea = document.querySelector("[data-mpv-area]") as HTMLElement | null;
@@ -320,6 +332,10 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
         case "N":
           e.preventDefault();
           handleNextRef.current();
+          break;
+        case "j":
+          e.preventDefault();
+          mpv.cycleSub();
           break;
       }
     };

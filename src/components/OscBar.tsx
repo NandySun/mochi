@@ -3,6 +3,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { spring } from "../animations/tokens";
 import type { Track } from "../hooks/useMpv";
 import type { OscTheme } from "../themes/oscThemes";
+import {
+  IconPrev,
+  IconPlay,
+  IconPause,
+  IconNext,
+  IconVolume,
+  IconVolumeMute,
+  IconEpisodes,
+} from "./icons";
 
 interface OscBarProps {
   timePos: number;
@@ -269,9 +278,9 @@ export default function OscBar({
       whileHover={{ backgroundColor: theme.buttonHoverBg }}
       whileTap={{ scale: 0.92 }}
       transition={spring.gentle}
-      style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
+      style={btnStyle({ width: 34, height: 34 })}
     >
-      ⏮
+      <IconPrev size={12} />
     </motion.button>
   );
 
@@ -281,9 +290,9 @@ export default function OscBar({
       whileHover={{ backgroundColor: theme.buttonHoverBg }}
       whileTap={{ scale: 0.88 }}
       transition={spring.press}
-      style={btnStyle({ width: 40, height: 40, fontSize: 16 })}
+      style={btnStyle({ width: 40, height: 40 })}
     >
-      {paused ? "▶" : "⏸"}
+      {paused ? <IconPlay size={18} /> : <IconPause size={18} />}
     </motion.button>
   );
 
@@ -293,9 +302,9 @@ export default function OscBar({
       whileHover={{ backgroundColor: theme.buttonHoverBg }}
       whileTap={{ scale: 0.92 }}
       transition={spring.gentle}
-      style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
+      style={btnStyle({ width: 34, height: 34 })}
     >
-      ⏭
+      <IconNext size={12} />
     </motion.button>
   );
 
@@ -328,9 +337,9 @@ export default function OscBar({
         whileHover={{ backgroundColor: theme.buttonHoverBg }}
         whileTap={{ scale: 0.92 }}
         transition={spring.gentle}
-        style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
+        style={btnStyle({ width: 34, height: 34 })}
       >
-        {volume === 0 ? "🔇" : "🔊"}
+        {volume === 0 ? <IconVolumeMute size={14} /> : <IconVolume size={14} />}
       </motion.button>
       <AnimatePresence>
         {showVolume && (
@@ -375,7 +384,7 @@ export default function OscBar({
               />
               <motion.div
                 className="absolute"
-                animate={{ scale: isVolDragging ? 1.15 : 1 }}
+                animate={{ scale: isVolDragging ? 1.15 : 1, x: "-50%", y: "-50%" }}
                 transition={spring.press}
                 style={{
                   left: "50%",
@@ -384,7 +393,6 @@ export default function OscBar({
                   height: 8,
                   borderRadius: "50%",
                   background: "#fff",
-                  transform: "translate(-50%, 50%)",
                   cursor: "grab",
                 }}
                 onMouseDown={handleVolKnobDown}
@@ -516,9 +524,9 @@ export default function OscBar({
         whileHover={{ backgroundColor: theme.buttonHoverBg }}
         whileTap={{ scale: 0.92 }}
         transition={spring.gentle}
-        style={btnStyle({ width: 34, height: 34, fontSize: 12 })}
+        style={btnStyle({ width: 34, height: 34 })}
       >
-        📋
+        <IconEpisodes size={14} />
       </motion.button>
       <AnimatePresence>
         {showEpisodes && (
@@ -712,7 +720,7 @@ export default function OscBar({
           )}
           <motion.div
             className="absolute"
-            animate={{ scale: isDragging ? 1.15 : 1 }}
+            animate={{ scale: isDragging ? 1.15 : 1, x: "-50%" }}
             transition={spring.press}
             style={{
               left: `${currentPct}%`,
@@ -722,7 +730,6 @@ export default function OscBar({
               borderRadius: "50%",
               background: "#fff",
               boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-              transform: "translateX(-50%)",
               transition: isDragging ? "none" : "width 0.15s, height 0.15s, top 0.15s",
             }}
             onMouseDown={handleKnobMouseDown}

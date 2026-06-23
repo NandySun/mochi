@@ -4,14 +4,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { spring } from "../animations/tokens";
 
 import SettingsMedia from "./SettingsMedia";
-import SettingsMetadata from "./SettingsMetadata";
 import SettingsPlayback from "./SettingsPlayback";
 import SettingsGeneral from "./SettingsGeneral";
 import SettingsAbout from "./SettingsAbout";
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
-type SectionId = "media" | "metadata" | "playback" | "general" | "about";
+type SectionId = "media" | "playback" | "general" | "about";
 
 interface SectionDef {
   id: SectionId;
@@ -21,7 +20,6 @@ interface SectionDef {
 
 const SECTIONS: SectionDef[] = [
   { id: "media",    label: "媒体库", component: SettingsMedia },
-  { id: "metadata", label: "元数据", component: SettingsMetadata },
   { id: "playback", label: "播放",   component: SettingsPlayback },
   { id: "general",  label: "通用",   component: SettingsGeneral },
   { id: "about",    label: "关于",   component: SettingsAbout },

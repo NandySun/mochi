@@ -30,12 +30,16 @@
 
 mod bangumi;
 mod cache;
+mod cast;
+mod episodes;
 mod tmdb;
 
 use serde::{Deserialize, Serialize};
 
 pub use bangumi::{BangumiClient, BangumiSearchResult, BangumiSubjectDetail, BangumiTag};
 pub use cache::{bangumi_cache_path, cache_dir, download_image, tmdb_cache_path};
+pub use cast::fetch_cast;
+pub use episodes::fetch_episode_metadata;
 pub use tmdb::{tmdb_image_url, TmdbClient, TmdbSearchResult};
 
 // ── Unified result ────────────────────────────────────────────────────────────
@@ -97,6 +101,14 @@ pub async fn fetch_metadata(
                         if let Ok(tmdb_result) = try_tmdb_backdrop(search_term, key, proxy_url, force).await {
                             if result.fanart_path.is_none() {
                                 result.fanart_path = Some(tmdb_result);
+                            }
+                        }
+                        // Also search TMDB for the title to get tmdb_id for episode metadata.
+                        // The tmdb_id is stored but NOT used for series metadata display
+                        // (anime ignores stored tmdb_id to prevent cross-source pollution).
+                        if result.tmdb_id.is_none() {
+                            if let Some(tmdb_id) = search_tmdb_id_for_anime(search_term, key, proxy_url).await {
+                                result.tmdb_id = Some(tmdb_id);
                             }
                         }
                     }
@@ -518,4 +530,17 @@ fn ensure_https(url: &str) -> String {
     } else {
         url.to_string()
     }
+}
+
+/// Search TMDB for an anime title and return the tmdb_id.
+/// Used to proactively store tmdb_id for later episode metadata fetching.
+/// Returns None if no match found (quiet failure).
+async fn search_tmdb_id_for_anime(
+    search_term: &str,
+    api_key: &str,
+    proxy_url: Option<&str>,
+) -> Option<i64> {
+    let tmdb = TmdbClient::new(api_key, proxy_url);
+    let results = tmdb.search_tv(search_term, "zh-CN", 1).await.ok()?;
+    results.first().map(|r| r.id)
 }

@@ -73,6 +73,27 @@ pub struct BangumiTag {
     pub count: i32,
 }
 
+// ── Characters ─────────────────────────────────────────────────────────────
+
+/// A character from /v0/subjects/{id}/characters
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BangumiCharacter {
+    pub id: i32,
+    pub name: String,
+    /// Character-actor relationship (e.g. "主角", "配角")
+    pub relation: Option<String>,
+    pub images: Option<BangumiImages>,
+    pub actors: Option<Vec<BangumiCharacterActor>>,
+}
+
+/// A voice actor linked to a character.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BangumiCharacterActor {
+    pub id: i32,
+    pub name: String,
+    pub images: Option<BangumiImages>,
+}
+
 // ── Client ────────────────────────────────────────────────────────────────────
 
 pub struct BangumiClient {
@@ -159,6 +180,26 @@ impl BangumiClient {
         resp.json::<BangumiSubjectDetail>()
             .await
             .map_err(|e| format!("Bangumi parse error: {e}"))
+    }
+
+    /// Fetch characters and voice actors for a subject.
+    /// GET /v0/subjects/{subject_id}/characters
+    pub async fn get_characters(&self, subject_id: i32) -> Result<Vec<BangumiCharacter>, String> {
+        let url = format!("https://api.bgm.tv/v0/subjects/{}/characters", subject_id);
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Bangumi characters request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Bangumi characters returned HTTP {}", resp.status()));
+        }
+
+        resp.json::<Vec<BangumiCharacter>>()
+            .await
+            .map_err(|e| format!("Bangumi characters parse error: {e}"))
     }
 }
 

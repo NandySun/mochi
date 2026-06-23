@@ -5,7 +5,7 @@ export interface Series {
   folder_name: string;
   display_name: string;
   search_term: string;
-  type: "anime" | "tv" | "movie" | "unknown";
+  type: "anime" | "tv" | "movie" | "variety" | "unknown";
   poster_path: string | null;
   fanart_path: string | null;
   bangumi_id: number | null;
@@ -28,9 +28,15 @@ export interface Episode {
   file_path: string;
   duration: number;
   subtitle_count: number;
+  subtitle_paths: string[];
   status: "ready" | "downloading" | "missing";
   watched_progress: number;
   watched_completed: number;
+  still_path: string | null;
+  still_url: string | null;
+  overview: string | null;
+  air_date: string | null;
+  runtime: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +60,7 @@ export interface EpisodeScan {
   season_number: number;
   title: string | null;
   subtitle_count: number;
+  subtitle_paths: string[];
   status: string;
   match_method: string; // "regex" | "fallback"
 }
@@ -70,7 +77,7 @@ export interface ScanResult {
 
 export interface MetadataResult {
   title: string;
-  series_type: "anime" | "tv" | "movie" | "unknown";
+  series_type: "anime" | "tv" | "movie" | "variety" | "unknown";
   bangumi_id: number | null;
   tmdb_id: number | null;
   synopsis: string | null;
@@ -115,4 +122,29 @@ export interface TmdbSearchResult {
   genre_ids: number[] | null;
   genres: { id: number; name: string }[] | null;
   media_type: string | null;
+}
+
+// ── Phase 3: Cast & Episode Metadata ───────────────────────────────────────
+
+/// Mirrors Rust db::Person
+export interface Person {
+  id: number;
+  source: "tmdb" | "bangumi";
+  source_id: string;
+  name: string;
+  role_name: string | null;
+  image_url: string | null;
+  image_cache: string | null;
+}
+
+/// Cast member with sort order (from get_series_cast command)
+export type CastMember = [Person, number]; // [person, sort_order]
+
+/// Extended episode fields from TMDB season endpoint
+export interface EpisodeMeta {
+  still_path: string | null;
+  still_url: string | null;
+  overview: string | null;
+  air_date: string | null;
+  runtime: number | null;
 }

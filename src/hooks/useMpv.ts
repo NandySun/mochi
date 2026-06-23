@@ -153,29 +153,42 @@ export function useMpv() {
 
   const refreshTracks = useCallback(async () => {
     try {
-      const trackList = await getProperty("track-list", "node");
-      const parsed = ((trackList as any[]) ?? [])
-        .filter((t: any) => t.type === "sub" || t.type === "audio")
-        .map((t: any) => ({
-          id: t.id as number,
-          type: t.type as "sub" | "audio",
-          title: (t.title as string) || (t.type === "sub" ? `字幕 ${t.id}` : `音轨 ${t.id}`),
-          selected: !!t.selected,
-        }));
-      setTracks(parsed);
-    } catch { /* ignore */ }
+      const count = await getProperty("track-list/count", "int64");
+      if (count == null || (count as number) === 0) {
+        setTracks([]);
+        return;
+      }
+      const n = count as number;
+      const list: Track[] = [];
+      for (let i = 0; i < n; i++) {
+        const type = await getProperty(`track-list/${i}/type`, "string").catch(() => null);
+        if (type !== "sub" && type !== "audio") continue;
+        const id = await getProperty(`track-list/${i}/id`, "int64").catch(() => null);
+        const title = await getProperty(`track-list/${i}/title`, "string").catch(() => null);
+        const selected = await getProperty(`track-list/${i}/selected`, "flag").catch(() => null);
+        list.push({
+          id: (id as number) ?? i,
+          type: type as "sub" | "audio",
+          title: (title as string) || `${type === "sub" ? "字幕" : "音轨"} ${(id as number) ?? i}`,
+          selected: !!selected,
+        });
+      }
+      setTracks(list);
+    } catch { /* mpv not ready */ }
   }, []);
 
   const setSubTrack = useCallback(async (trackId: number | null) => {
     try {
-      await setProperty("sid", trackId === null ? "no" : trackId);
+      // Use command instead of setProperty to avoid libmpv-wrapper type mismatch
+      // (sid is mpv int64 but setProperty sends all numbers as double)
+      await command("set", ["sid", trackId === null ? "no" : String(trackId)]);
       await refreshTracks();
     } catch { /* ignore */ }
   }, [refreshTracks]);
 
   const setAudioTrack = useCallback(async (trackId: number) => {
     try {
-      await setProperty("aid", trackId);
+      await command("set", ["aid", String(trackId)]);
       await refreshTracks();
     } catch { /* ignore */ }
   }, [refreshTracks]);
@@ -194,6 +207,20 @@ export function useMpv() {
     try {
       await setVideoMarginRatio({ top, right, bottom, left });
     } catch { /* non-critical */ }
+  }, []);
+
+  const loadSubtitleFiles = useCallback(async (paths: string[]) => {
+    for (const path of paths) {
+      try {
+        await command("sub-add", [path]);
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const cycleSub = useCallback(async () => {
+    try {
+      await command("cycle", ["sid"]);
+    } catch { /* ignore */ }
   }, []);
 
   const cleanup = useCallback(async () => {
@@ -237,6 +264,8 @@ export function useMpv() {
     setVol,
     cycleSpeed,
     setVideoMargins,
+    loadSubtitleFiles,
+    cycleSub,
     refreshTracks,
     setSubTrack,
     setAudioTrack,
