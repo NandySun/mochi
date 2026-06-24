@@ -97,6 +97,13 @@ pub async fn fetch_episode_metadata(
     let tmdb = TmdbClient::new(tmdb_api_key, proxy_url);
     let mut season_updates: Vec<SeasonUpdate> = Vec::new();
 
+    // When all episodes belong to a single season, capture season-level
+    // metadata (poster, synopsis, name) to enrich the series display.
+    let uniform_season = seasons.len() == 1 && ctx.series.series_type != "anime";
+    let mut season_series_title: Option<String> = None;
+    let mut season_series_synopsis: Option<String> = None;
+    let mut season_series_poster: Option<String> = None;
+
     for season_num in seasons {
         let season_detail = match tmdb.get_season(tmdb_id, season_num, "zh-CN").await {
             Ok(s) => s,
@@ -105,6 +112,27 @@ pub async fn fetch_episode_metadata(
                 continue;
             }
         };
+
+        // ── Capture season-level metadata for single-season series ──
+        if uniform_season {
+            // Compose display title: "哈哈哈哈哈" + "第六季" → "哈哈哈哈哈 第六季"
+            if let Some(ref name) = season_detail.name {
+                if !name.is_empty() && !ctx.series.title.ends_with(name) {
+                    season_series_title = Some(format!("{} {}", ctx.series.title, name));
+                }
+            }
+            // Season-specific synopsis
+            season_series_synopsis = season_detail.overview.clone();
+            // Season poster (download async)
+            if let Some(ref poster) = season_detail.poster_path {
+                let url = tmdb::tmdb_image_url(poster, "w500");
+                if let Ok(cache_path) = cache::tmdb_cache_path("poster", tmdb_id) {
+                    if cache::download_image(&url, &cache_path, proxy_url, true).await.is_ok() {
+                        season_series_poster = Some(cache_path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
 
         let mut episode_updates: Vec<Episode> = Vec::new();
 
@@ -180,6 +208,30 @@ pub async fn fetch_episode_metadata(
     let mut updated_count = 0usize;
     {
         let conn = db_mutex.lock().map_err(|e| e.to_string())?;
+
+        // ── Update series-level metadata with season-specific data ──
+        if season_series_title.is_some()
+            || season_series_synopsis.is_some()
+            || season_series_poster.is_some()
+        {
+            let title = season_series_title.as_deref().unwrap_or(&ctx.series.title);
+            db::update_series_metadata(
+                &conn,
+                series_id,
+                title,
+                &ctx.series.series_type,
+                ctx.series.bangumi_id,
+                Some(tmdb_id),
+                season_series_synopsis.as_deref(),
+                ctx.series.year,
+                ctx.series.genres.as_deref(),
+                season_series_poster.as_deref(),
+                ctx.series.fanart_path.as_deref(),
+                ctx.series.score,
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
         for season_update in &season_updates {
             for ep in &season_update.episode_updates {
                 db::upsert_episode(&conn, ep).map_err(|e| e.to_string())?;

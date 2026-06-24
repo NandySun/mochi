@@ -330,7 +330,7 @@ export default function SeriesDetail() {
 
   const gradient = GRADIENTS[(series?.id ?? 0) % GRADIENTS.length];
   const posterSrc = useImageSrc(series?.poster_path ?? null);
-  const initial = (series?.display_name ?? "?").charAt(0);
+  const initial = (series?.title ?? "?").charAt(0);
   const genres: string[] = series?.genres
     ? (() => {
         try {
@@ -487,7 +487,7 @@ export default function SeriesDetail() {
                 lineHeight: 1.2,
               }}
             >
-              {series.display_name}
+              {series.title}
             </h1>
 
             {/* Info row: score · year · episode count · type */}

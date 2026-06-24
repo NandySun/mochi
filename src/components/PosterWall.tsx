@@ -32,7 +32,7 @@ function PosterCard({
 }) {
   const posterSrc = useImageSrc(s.poster_path);
   const gradient = GRADIENTS[s.id % GRADIENTS.length];
-  const initial = s.display_name.charAt(0);
+  const initial = s.title.charAt(0);
 
   return (
     <motion.button
@@ -553,7 +553,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                     userSelect: "none",
                   }}
                 >
-                  {selected.display_name}
+                  {selected.title}
                 </motion.div>
               )}
             </AnimatePresence>

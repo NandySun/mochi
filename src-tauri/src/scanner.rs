@@ -273,22 +273,98 @@ pub fn resolve_type_from_filesystem(root_paths: &[String], folder_name: &str) ->
 }
 
 /// Extract episode number and optionally season number from a filename.
-/// Returns (season_number, episode_number) or None if no pattern matched.
-fn extract_episode_info(filename: &str) -> Option<(i32, i32)> {
+/// Returns (season_number, episode_number, season_explicit) or None if no pattern matched.
+/// `season_explicit` is true when the season came from an SXXEYY pattern, false when it defaulted to 1.
+fn extract_episode_info(filename: &str) -> Option<(i32, i32, bool)> {
     for (re, has_season) in ep_patterns().iter() {
         if let Some(caps) = re.captures(filename) {
             if *has_season {
-                // SXXEYY pattern
+                // SXXEYY pattern — season is explicit
                 let s: i32 = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
                 let e: i32 = caps.get(2).and_then(|m| m.as_str().parse().ok())?;
-                return Some((s, e));
+                return Some((s, e, true));
             } else {
                 let e: i32 = caps.get(1).and_then(|m| m.as_str().parse().ok())?;
-                return Some((1, e));
+                return Some((1, e, false));
             }
         }
     }
     None
+}
+
+/// Parse a Chinese numeral string to i32, e.g. "六" → 6, "十二" → 12, "二十一" → 21.
+/// Returns None if the string is not a recognizable Chinese numeral.
+fn parse_chinese_numeral(s: &str) -> Option<i32> {
+    if s.is_empty() {
+        return None;
+    }
+    // Single-digit lookup
+    if s.len() == 1 {
+        return match s {
+            "一" => Some(1), "二" => Some(2), "三" => Some(3), "四" => Some(4),
+            "五" => Some(5), "六" => Some(6), "七" => Some(7), "八" => Some(8),
+            "九" => Some(9), "十" => Some(10),
+            _ => None,
+        };
+    }
+    // Multi-character: "十二" → 10+2, "二十一" → 2*10+1, "一百二十" → 1*100+20
+    let chars: Vec<char> = s.chars().collect();
+    let mut total = 0i32;
+    let mut section = 0i32;
+    for &c in &chars {
+        match c {
+            '一' => section += 1,
+            '二' => section += 2,
+            '三' => section += 3,
+            '四' => section += 4,
+            '五' => section += 5,
+            '六' => section += 6,
+            '七' => section += 7,
+            '八' => section += 8,
+            '九' => section += 9,
+            '十' => {
+                if section == 0 { section = 1; }
+                total += section * 10;
+                section = 0;
+            }
+            '百' => {
+                if section == 0 { section = 1; }
+                total += section * 100;
+                section = 0;
+            }
+            _ => return None, // unrecognized character
+        }
+    }
+    total += section;
+    if total == 0 {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+/// Extract season number from a folder/prefix name, e.g. "哈哈哈哈哈 第六季" → ("哈哈哈哈哈", Some(6)).
+/// Also detects patterns like "Season 3", "S3", and Chinese numerals (第X季).
+/// Returns (cleaned_name, season_number).
+fn extract_season_from_name(name: &str) -> (String, Option<i32>) {
+    static SEASON_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"[\s\-–]*第\s*([\d一二三四五六七八九十百千]+)\s*季$|[\s\-–]*[Ss]eason\s*(\d+)$|[\s\-–]*[Ss](\d+)$").unwrap());
+    if let Some(caps) = SEASON_RE.captures(name) {
+        let raw = caps.get(1)
+            .or_else(|| caps.get(2))
+            .or_else(|| caps.get(3));
+        let season: Option<i32> = raw.and_then(|m| {
+            let s = m.as_str();
+            // Try ASCII integer first, then Chinese numeral
+            s.parse::<i32>().ok()
+                .or_else(|| parse_chinese_numeral(s))
+        });
+        if let Some(s) = season {
+            let cleaned = SEASON_RE.replace(name, "").to_string();
+            return (cleaned, Some(s));
+        }
+    }
+    (name.to_string(), None)
 }
 
 /// Get lowercase extension without the dot.
@@ -411,12 +487,13 @@ pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResu
                 let (resolved_type, display_override) =
                     resolve_type_hint(sub_entry.path(), &folder_name, Some(&hint));
 
-                // Determine display_name and search_term
+                // Determine display_name and search_term, strip season from folder name
                 let base_display = display_override.unwrap_or_else(|| folder_name.clone());
-                let (display_name, search_term) = parse_folder_name(&base_display);
+                let (base_clean, folder_season) = extract_season_from_name(&base_display);
+                let (display_name, search_term) = parse_folder_name(&base_clean);
 
                 let (episodes, poster_path, fanart_path) =
-                    scan_series_folder(sub_entry.path())?;
+                    scan_series_folder(sub_entry.path(), folder_season)?;
                 series_list.push(SeriesScan {
                     folder_name,
                     display_name,
@@ -445,10 +522,11 @@ pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResu
                 resolve_type_hint(entry.path(), &folder_name, root_parent_hint);
 
             let base_display = display_override.unwrap_or_else(|| folder_name.clone());
-            let (display_name, search_term) = parse_folder_name(&base_display);
+            let (base_clean, folder_season) = extract_season_from_name(&base_display);
+            let (display_name, search_term) = parse_folder_name(&base_clean);
 
             let (episodes, poster_path, fanart_path) =
-                scan_series_folder(entry.path())?;
+                scan_series_folder(entry.path(), folder_season)?;
             series_list.push(SeriesScan {
                 folder_name,
                 display_name,
@@ -516,11 +594,14 @@ fn cluster_flat_files(
 
         let folder_name = prefix.clone();
 
+        // Extract season from prefix (e.g. "哈哈哈哈哈 第六季 EP01" → "哈哈哈哈哈", 6)
+        let (prefix_clean, flat_season) = extract_season_from_name(&prefix);
+
         // Build episodes from the clustered files
         let mut episodes: Vec<EpisodeScan> = Vec::new();
 
         // C1: Classify
-        let mut matched: Vec<(PathBuf, i32, i32)> = Vec::new();
+        let mut matched: Vec<(PathBuf, i32, i32, bool)> = Vec::new();
         let mut fallback: Vec<PathBuf> = Vec::new();
 
         for file_path in &files {
@@ -533,8 +614,8 @@ fn cluster_flat_files(
                 continue;
             }
 
-            if let Some((season, episode)) = extract_episode_info(file_name) {
-                matched.push((file_path.clone(), season, episode));
+            if let Some((season, episode, explicit)) = extract_episode_info(file_name) {
+                matched.push((file_path.clone(), season, episode, explicit));
             } else {
                 fallback.push(file_path.clone());
             }
@@ -542,7 +623,12 @@ fn cluster_flat_files(
 
         // Process matched
         let mut occupied: HashSet<i32> = HashSet::new();
-        for (file_path, season_number, episode_number) in &matched {
+        for (file_path, season_number, episode_number, season_explicit) in &matched {
+            let effective_season = if !season_explicit {
+                flat_season.unwrap_or(*season_number)
+            } else {
+                *season_number
+            };
             occupied.insert(*episode_number);
             let file_name = file_path
                 .file_name()
@@ -554,7 +640,7 @@ fn cluster_flat_files(
                 file_path: abs_path,
                 file_name,
                 episode_number: *episode_number,
-                season_number: *season_number,
+                season_number: effective_season,
                 title: None,
                 subtitle_count: 0,
                 subtitle_paths: Vec::new(),
@@ -579,11 +665,14 @@ fn cluster_flat_files(
                 .unwrap_or("")
                 .to_string();
             let abs_path = normalize_path(file_path);
+
+            let fallback_season = flat_season.unwrap_or(1);
+
             episodes.push(EpisodeScan {
                 file_path: abs_path,
                 file_name,
                 episode_number: assigned_ep,
-                season_number: 1,
+                season_number: fallback_season,
                 title: None,
                 subtitle_count: 0,
                 subtitle_paths: Vec::new(),
@@ -618,7 +707,7 @@ fn cluster_flat_files(
             }
         };
 
-        let base_display = display_override.unwrap_or_else(|| prefix.clone());
+        let base_display = display_override.unwrap_or_else(|| prefix_clean.clone());
         let (display_name, search_term) = parse_folder_name(&base_display);
 
         series_list.push(SeriesScan {
@@ -666,6 +755,7 @@ fn extract_series_prefix(filename: &str) -> String {
 }
 fn scan_series_folder(
     dir: &Path,
+    default_season: Option<i32>,
 ) -> Result<(Vec<EpisodeScan>, Option<String>, Option<String>), String> {
     // Collect all files in this folder (depth 1 only for files; also check sub/ dir)
     let mut video_files: Vec<PathBuf> = Vec::new();
@@ -737,7 +827,7 @@ fn scan_series_folder(
 
     // Build episode list: C1 (regex match) then C2 (fallback assignment)
     let mut episodes: Vec<EpisodeScan> = Vec::new();
-    let mut matched: Vec<(PathBuf, i32, i32)> = Vec::new(); // (path, season, episode)
+    let mut matched: Vec<(PathBuf, i32, i32, bool)> = Vec::new(); // (path, season, episode, season_explicit)
     let mut fallback: Vec<PathBuf> = Vec::new();
 
     // Build a set of "downloading" video stems
@@ -764,8 +854,8 @@ fn scan_series_folder(
         }
 
         // Try regex match
-        if let Some((season, episode)) = extract_episode_info(&file_name) {
-            matched.push((video_path.clone(), season, episode));
+        if let Some((season, episode, explicit)) = extract_episode_info(&file_name) {
+            matched.push((video_path.clone(), season, episode, explicit));
         } else {
             fallback.push(video_path.clone());
         }
@@ -774,7 +864,13 @@ fn scan_series_folder(
     // ── Process matched files, track occupied episode numbers ─────────
     let mut occupied: HashSet<i32> = HashSet::new();
 
-    for (video_path, season_number, episode_number) in &matched {
+    for (video_path, season_number, episode_number, season_explicit) in &matched {
+        // If season was defaulted (not from SXXEYY) and folder provides a season, use it
+        let effective_season = if !season_explicit {
+            default_season.unwrap_or(*season_number)
+        } else {
+            *season_number
+        };
         occupied.insert(*episode_number);
 
         let file_name = video_path
@@ -804,7 +900,7 @@ fn scan_series_folder(
             file_path: abs_path,
             file_name,
             episode_number: *episode_number,
-            season_number: *season_number,
+            season_number: effective_season,
             title: None,
             subtitle_count,
             subtitle_paths,
@@ -854,11 +950,14 @@ fn scan_series_folder(
 
         let abs_path = normalize_path(video_path);
 
+        // Use folder-derived season for fallback episodes, default to 1
+        let fallback_season = default_season.unwrap_or(1);
+
         episodes.push(EpisodeScan {
             file_path: abs_path,
             file_name,
             episode_number: assigned_ep,
-            season_number: 1,
+            season_number: fallback_season,
             title: None,
             subtitle_count,
             subtitle_paths,
@@ -935,28 +1034,28 @@ mod tests {
 
     #[test]
     fn test_extract_episode_e_pattern() {
-        assert_eq!(extract_episode_info("太阳星辰_E01_粤语.ts"), Some((1, 1)));
-        assert_eq!(extract_episode_info("Show_E24.mkv"), Some((1, 24)));
+        assert_eq!(extract_episode_info("太阳星辰_E01_粤语.ts"), Some((1, 1, false)));
+        assert_eq!(extract_episode_info("Show_E24.mkv"), Some((1, 24, false)));
     }
 
     #[test]
     fn test_extract_episode_chinese_pattern() {
         assert_eq!(
             extract_episode_info("上伊那牡丹 - 第01集.mkv"),
-            Some((1, 1))
+            Some((1, 1, false))
         );
-        assert_eq!(extract_episode_info("第12集.mkv"), Some((1, 12)));
+        assert_eq!(extract_episode_info("第12集.mkv"), Some((1, 12, false)));
     }
 
     #[test]
     fn test_extract_episode_se_pattern() {
         assert_eq!(
             extract_episode_info("Show S01E12.mkv"),
-            Some((1, 12))
+            Some((1, 12, true))
         );
         assert_eq!(
             extract_episode_info("s02e03.mkv"),
-            Some((2, 3))
+            Some((2, 3, true))
         );
     }
 
@@ -964,7 +1063,7 @@ mod tests {
     fn test_extract_episode_dash_pattern() {
         assert_eq!(
             extract_episode_info("Yomi no Tsugai - 03 [1080p HEVC].mkv"),
-            Some((1, 3))
+            Some((1, 3, false))
         );
     }
 
@@ -975,9 +1074,9 @@ mod tests {
         // Priority 5: [XX]
         assert_eq!(
             extract_episode_info("[VCB-Studio] Kamiina Botan [01].mkv"),
-            Some((1, 1))
+            Some((1, 1, false))
         );
-        assert_eq!(extract_episode_info("[12].mkv"), Some((1, 12)));
+        assert_eq!(extract_episode_info("[12].mkv"), Some((1, 12, false)));
         // Should not match [VCB-Studio] (non-digit content)
         assert!(extract_episode_info("[VCB-Studio] Show.mkv").is_none());
     }
@@ -985,22 +1084,22 @@ mod tests {
     #[test]
     fn test_extract_episode_ep_pattern() {
         // Priority 6: EPXX
-        assert_eq!(extract_episode_info("Show EP01.mkv"), Some((1, 1)));
-        assert_eq!(extract_episode_info("ep24.mkv"), Some((1, 24)));
+        assert_eq!(extract_episode_info("Show EP01.mkv"), Some((1, 1, false)));
+        assert_eq!(extract_episode_info("ep24.mkv"), Some((1, 24, false)));
     }
 
     #[test]
     fn test_extract_episode_hash_pattern() {
         // Priority 7: #XX
-        assert_eq!(extract_episode_info("Show #01.mkv"), Some((1, 1)));
-        assert_eq!(extract_episode_info("series #12 [1080p].mkv"), Some((1, 12)));
+        assert_eq!(extract_episode_info("Show #01.mkv"), Some((1, 1, false)));
+        assert_eq!(extract_episode_info("series #12 [1080p].mkv"), Some((1, 12, false)));
     }
 
     #[test]
     fn test_extract_episode_jp_wa_pattern() {
         // Priority 8: 第XX話
-        assert_eq!(extract_episode_info("第1話.mkv"), Some((1, 1)));
-        assert_eq!(extract_episode_info("姫様「拷問」の時間です 第12話.mkv"), Some((1, 12)));
+        assert_eq!(extract_episode_info("第1話.mkv"), Some((1, 1, false)));
+        assert_eq!(extract_episode_info("姫様「拷問」の時間です 第12話.mkv"), Some((1, 12, false)));
     }
 
     #[test]
@@ -1054,7 +1153,7 @@ mod tests {
         // _E01 should be caught by pattern 1, not pattern 6
         assert_eq!(
             extract_episode_info("Show_E01.mkv"),
-            Some((1, 1))
+            Some((1, 1, false))
         );
     }
 
@@ -1063,7 +1162,7 @@ mod tests {
         // S01E12 should be caught by pattern 3, not pattern 5
         assert_eq!(
             extract_episode_info("Show S01E12 [01].mkv"),
-            Some((1, 12))
+            Some((1, 12, true))
         );
     }
 
@@ -1074,7 +1173,7 @@ mod tests {
         // So for "Show - 03 [01].mkv", pattern 4 matches first (episode 3)
         assert_eq!(
             extract_episode_info("Show - 03 [01].mkv"),
-            Some((1, 3))
+            Some((1, 3, false))
         );
     }
 

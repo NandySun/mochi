@@ -129,8 +129,8 @@ pub async fn fetch_metadata(
                 }
             }
         }
-        "tv" | "movie" => {
-            // TMDB first for TV/movies, Bangumi as fallback
+        "tv" | "movie" | "variety" => {
+            // TMDB first for TV/movies/variety, Bangumi as fallback
             if let Some(key) = tmdb_api_key {
                 match try_tmdb(search_term, key, proxy_url, force).await {
                     Ok(result) => return Ok(result),

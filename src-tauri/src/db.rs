@@ -516,8 +516,8 @@ pub fn update_series_metadata(conn: &Connection, series_id: i64, title: &str, se
              synopsis = COALESCE(?5, synopsis),
              year = COALESCE(?6, year),
              genres = COALESCE(?7, genres),
-             poster_path = COALESCE(poster_path, ?8),
-             fanart_path = COALESCE(fanart_path, ?9),
+             poster_path = COALESCE(?8, poster_path),
+             fanart_path = COALESCE(?9, fanart_path),
              score = COALESCE(?11, score),
              updated_at = datetime('now')
          WHERE id = ?10",
@@ -560,7 +560,7 @@ pub fn update_series_type(conn: &Connection, series_id: i64, new_type: &str) -> 
 /// Preserves series.type (user-set type). Used by "clear all verdicts".
 pub fn clear_all_metadata_ids(conn: &Connection) -> Result<()> {
     conn.execute(
-        "UPDATE series SET bangumi_id = NULL, tmdb_id = NULL, search_term = NULL, updated_at = datetime('now')",
+        "UPDATE series SET bangumi_id = NULL, tmdb_id = NULL, search_term = display_name, updated_at = datetime('now')",
         [],
     )?;
     Ok(())

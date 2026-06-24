@@ -39,7 +39,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
     cards.forEach((card, i) => {
       if (card.status !== "searching") return;
 
-      const searchTerm = card.series.display_name;
+      const searchTerm = card.series.search_term;
 
       // Search Bangumi
       const bgmPromise = invoke<BangumiSearchResult[]>("search_bangumi", {
