@@ -1,6 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use walkdir::WalkDir;
@@ -494,6 +494,10 @@ pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResu
 
                 let (episodes, poster_path, fanart_path) =
                     scan_series_folder(sub_entry.path(), folder_season)?;
+                // Skip empty folders (no video files)
+                if episodes.is_empty() {
+                    continue;
+                }
                 series_list.push(SeriesScan {
                     folder_name,
                     display_name,
@@ -527,6 +531,10 @@ pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResu
 
             let (episodes, poster_path, fanart_path) =
                 scan_series_folder(entry.path(), folder_season)?;
+            // Skip empty folders (no video files)
+            if episodes.is_empty() {
+                continue;
+            }
             series_list.push(SeriesScan {
                 folder_name,
                 display_name,
@@ -825,6 +833,91 @@ fn scan_series_folder(
         }
     }
 
+    // ── Season sub-directory scanning ────────────────────────────────
+    // Detect depth-1 sub-directories whose names contain season hints
+    // (e.g. "东京食尸鬼S01", "Season 2", "第1季"). Collect their video
+    // files into the same pipeline, keyed by parent season.
+    let mut parent_season_map: HashMap<PathBuf, i32> = HashMap::new();
+
+    for entry in WalkDir::new(dir)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let subdir_name = entry.file_name().to_str().unwrap_or("");
+        if subdir_name.starts_with('.') {
+            continue;
+        }
+
+        // Try to extract season number from sub-directory name
+        if let (_, Some(season)) = extract_season_from_name(subdir_name) {
+            let subdir = entry.path();
+
+            // Collect video, subtitle, and temp files from season sub-directory
+            for file_entry in WalkDir::new(subdir)
+                .min_depth(1)
+                .max_depth(1)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                let file_path = file_entry.path();
+                if !file_path.is_file() {
+                    continue;
+                }
+
+                let ext = match ext_lower(file_path) {
+                    Some(e) => e,
+                    None => continue,
+                };
+
+                if VIDEO_EXTS.contains(&ext.as_str()) {
+                    let file_name = file_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
+                    if !is_excluded(file_name) {
+                        parent_season_map.insert(file_path.to_path_buf(), season);
+                        video_files.push(file_path.to_path_buf());
+                    }
+                } else if SUB_EXTS.contains(&ext.as_str()) {
+                    subtitle_files.push(file_path.to_path_buf());
+                } else if TEMP_EXTS.contains(&ext.as_str()) {
+                    temp_files.push(file_path.to_path_buf());
+                }
+            }
+
+            // Also collect subtitles from season sub-directory's sub/ or subs/
+            for sub_entry in WalkDir::new(subdir)
+                .min_depth(2)
+                .max_depth(2)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                let sub_path = sub_entry.path();
+                if !sub_path.is_file() {
+                    continue;
+                }
+                if let Some(ext) = ext_lower(sub_path) {
+                    if SUB_EXTS.contains(&ext.as_str()) {
+                        let parent_name = sub_path
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|n| n.to_str())
+                            .map(|n| n.to_lowercase())
+                            .unwrap_or_default();
+                        if parent_name == "sub" || parent_name == "subs" {
+                            sub_dir_files.push(sub_path.to_path_buf());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Build episode list: C1 (regex match) then C2 (fallback assignment)
     let mut episodes: Vec<EpisodeScan> = Vec::new();
     let mut matched: Vec<(PathBuf, i32, i32, bool)> = Vec::new(); // (path, season, episode, season_explicit)
@@ -865,11 +958,13 @@ fn scan_series_folder(
     let mut occupied: HashSet<i32> = HashSet::new();
 
     for (video_path, season_number, episode_number, season_explicit) in &matched {
-        // If season was defaulted (not from SXXEYY) and folder provides a season, use it
-        let effective_season = if !season_explicit {
-            default_season.unwrap_or(*season_number)
-        } else {
+        // Season priority: filename SXXEXX > parent sub-directory > folder default
+        let effective_season = if *season_explicit {
             *season_number
+        } else if let Some(ps) = parent_season_map.get(video_path) {
+            *ps
+        } else {
+            default_season.unwrap_or(*season_number)
         };
         occupied.insert(*episode_number);
 
@@ -950,8 +1045,12 @@ fn scan_series_folder(
 
         let abs_path = normalize_path(video_path);
 
-        // Use folder-derived season for fallback episodes, default to 1
-        let fallback_season = default_season.unwrap_or(1);
+        // Season priority for fallback: parent sub-directory > folder default
+        let fallback_season = parent_season_map
+            .get(video_path)
+            .copied()
+            .or(default_season)
+            .unwrap_or(1);
 
         episodes.push(EpisodeScan {
             file_path: abs_path,

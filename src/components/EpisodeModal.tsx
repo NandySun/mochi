@@ -145,26 +145,43 @@ export default function EpisodeModal({
 
                 {/* Season selector */}
                 {seasons.length > 1 && (
-                  <select
-                    value={season}
-                    onChange={(e) => setSeason(Number(e.target.value))}
-                    style={{
-                      fontSize: 11,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      background: "rgba(255,255,255,0.04)",
-                      color: "rgba(232,228,223,0.45)",
-                      cursor: "pointer",
-                      outline: "none",
-                    }}
-                  >
-                    {seasons.map((s) => (
-                      <option key={s} value={s}>
-                        S{s}
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {seasons.map((s) => {
+                      const isActive = s === season;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => setSeason(s)}
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            border: "none",
+                            cursor: "pointer",
+                            background: isActive ? "#c47e3a" : "rgba(255,255,255,0.06)",
+                            color: isActive ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.35)",
+                            transition: "all 0.2s",
+                            fontFamily: "inherit",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.1)";
+                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.55)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.35)";
+                            }
+                          }}
+                        >
+                          S{s}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
 
                 {/* Sort order toggle */}

@@ -2,10 +2,13 @@ import { useState, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, LayoutGroup, motion, useMotionValue, useSpring } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { NavDirectionProvider } from "./hooks/useNavigationDirection";
 import { BackgroundProvider, useBackground } from "./hooks/useBackground";
 import { useImageSrc } from "./hooks/useImageSrc";
 import { pageAnimations } from "./animations/tokens";
+import type { SeriesScan } from "./types";
 import TitleBar from "./components/TitleBar";
 import PageWrapper from "./components/PageWrapper";
 import PosterWall from "./components/PosterWall";
@@ -14,6 +17,7 @@ import VideoPlayer from "./components/VideoPlayer";
 import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
 import WindowResizeHandles from "./components/WindowResizeHandles";
+import DropOverlay from "./components/DropOverlay";
 
 function GlobalBackground() {
   const { bg, gradientVersion, tempDirection } = useBackground();
@@ -93,6 +97,118 @@ function GlobalBackground() {
   );
 }
 
+// ── Drag-and-drop helpers ──────────────────────────────────────────────
+
+const VIDEO_EXTS = ["mkv", "mp4", "ts", "avi", "mov", "webm", "m2ts"];
+const ROOT_DIRS_KEY = "mochi_root_dirs";
+const AMBIGUOUS_KEY = "mochi_ambiguous_series";
+
+interface RootDirEntry {
+  path: string;
+  type: "auto" | "anime" | "tv" | "movie" | "variety";
+}
+
+function loadRootDirs(): RootDirEntry[] {
+  try {
+    const raw = localStorage.getItem(ROOT_DIRS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
+    if (typeof parsed[0] === "string") {
+      return (parsed as string[]).map((p) => ({ path: p, type: "auto" as const }));
+    }
+    return parsed as RootDirEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function isVideoFilePath(p: string): boolean {
+  const ext = p.split(".").pop()?.toLowerCase() ?? "";
+  return VIDEO_EXTS.includes(ext);
+}
+
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
+async function handleDropPaths(paths: string[]) {
+  const rootDirs = loadRootDirs();
+  const normRootPaths = rootDirs.map((d) => normalizePath(d.path));
+
+  const newDirs: RootDirEntry[] = [];
+  const scanQueue: { path: string; type: string | null }[] = [];
+
+  for (const rawPath of paths) {
+    const np = normalizePath(rawPath);
+    // If it's a video file, use its parent directory
+    const dirPath = isVideoFilePath(np)
+      ? np.substring(0, np.lastIndexOf("/"))
+      : np;
+
+    // Dedup against already-queued new dirs
+    if (newDirs.some((d) => normalizePath(d.path) === dirPath)) continue;
+
+    // Dedup against existing rootDirs
+    if (normRootPaths.includes(dirPath)) continue;
+
+    // Check if covered by an existing rootDir
+    const coveredBy = normRootPaths.find((rp) => dirPath.startsWith(rp + "/") || dirPath === rp);
+    if (coveredBy) {
+      // Already covered — scan the existing rootDir instead
+      const existing = rootDirs.find((d) => normalizePath(d.path) === coveredBy);
+      if (existing && !scanQueue.some((s) => s.path === existing.path)) {
+        scanQueue.push({ path: existing.path, type: existing.type === "auto" ? null : existing.type });
+      }
+      continue;
+    }
+
+    const entry: RootDirEntry = { path: dirPath, type: "auto" };
+    newDirs.push(entry);
+    scanQueue.push({ path: dirPath, type: null });
+  }
+
+  if (newDirs.length > 0) {
+    const merged = [...rootDirs, ...newDirs];
+    localStorage.setItem(ROOT_DIRS_KEY, JSON.stringify(merged));
+  }
+
+  if (scanQueue.length === 0) return;
+
+  // Scan each directory incrementally
+  let totalAmbiguous: SeriesScan[] = [];
+  try {
+    const existingAmbiguousRaw = localStorage.getItem(AMBIGUOUS_KEY);
+    if (existingAmbiguousRaw) {
+      totalAmbiguous = JSON.parse(existingAmbiguousRaw) as SeriesScan[];
+    }
+  } catch { /* ignore */ }
+
+  for (const dir of scanQueue) {
+    try {
+      const result = await invoke<{ series: { folder_name: string }[]; ambiguous: SeriesScan[] }>(
+        "scan_library",
+        { rootPath: dir.path, rootType: dir.type }
+      );
+      if (result.ambiguous && result.ambiguous.length > 0) {
+        for (const amb of result.ambiguous) {
+          if (!totalAmbiguous.some((a) => a.folder_name === amb.folder_name)) {
+            totalAmbiguous.push(amb);
+          }
+        }
+      }
+    } catch {
+      // skip failed directories
+    }
+  }
+
+  if (totalAmbiguous.length > 0) {
+    localStorage.setItem(AMBIGUOUS_KEY, JSON.stringify(totalAmbiguous));
+  }
+
+  window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+}
+
 export default function App() {
   const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -100,6 +216,12 @@ export default function App() {
   const [showTrayTip, setShowTrayTip] = useState(false);
   const [showBatchDone, setShowBatchDone] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  // ── Startup cleanup: clear stale batch-fetch flag ─────────────────
+  useEffect(() => {
+    localStorage.removeItem("mochi_batch_fetch_running");
+  }, []);
 
   // ── First-launch onboarding ───────────────────────────────────────
   useEffect(() => {
@@ -140,6 +262,22 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // ── Drag-and-drop folder import ─────────────────────────────────────
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow().onDragDropEvent((event) => {
+      if (event.payload.type === "over") {
+        setDragOver(true);
+      } else if (event.payload.type === "drop") {
+        setDragOver(false);
+        handleDropPaths(event.payload.paths).catch(console.error);
+      } else {
+        setDragOver(false);
+      }
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
   }, []);
 
   return (
@@ -200,6 +338,11 @@ export default function App() {
               </AnimatePresence>
             </main>
             <WindowResizeHandles disabled={isFullscreen} />
+
+            {/* ── Drag-and-drop overlay ─────────────────────────────── */}
+            <AnimatePresence>
+              {dragOver && <DropOverlay />}
+            </AnimatePresence>
           </div>
 
           {/* ── Tray minimize toast ──────────────────────────────────── */}

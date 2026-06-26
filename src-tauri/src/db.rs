@@ -231,14 +231,14 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
             display_name=excluded.display_name,
             search_term=excluded.search_term,
             type=excluded.type,
-            poster_path=excluded.poster_path,
-            fanart_path=excluded.fanart_path,
-            bangumi_id=excluded.bangumi_id,
-            tmdb_id=excluded.tmdb_id,
-            synopsis=excluded.synopsis,
-            year=excluded.year,
-            genres=excluded.genres,
-            score=excluded.score,
+            poster_path=COALESCE(excluded.poster_path, series.poster_path),
+            fanart_path=COALESCE(excluded.fanart_path, series.fanart_path),
+            bangumi_id=COALESCE(excluded.bangumi_id, series.bangumi_id),
+            tmdb_id=COALESCE(excluded.tmdb_id, series.tmdb_id),
+            synopsis=COALESCE(excluded.synopsis, series.synopsis),
+            year=COALESCE(excluded.year, series.year),
+            genres=COALESCE(excluded.genres, series.genres),
+            score=COALESCE(excluded.score, series.score),
             updated_at=datetime('now')
         RETURNING id",
         params![
@@ -635,6 +635,32 @@ pub fn get_series_resume_episode(conn: &Connection, series_id: i64) -> Result<Op
     .map_err(Into::into)
 }
 
+// ── Root removal ──────────────────────────────────────────────────────────
+
+/// Delete all series whose episodes reside under `root_path`.
+/// Matches episodes by file_path prefix; cascading FK handles episodes and cast.
+/// Returns the number of series deleted.
+pub fn delete_series_by_root_path(conn: &Connection, root_path: &str) -> Result<usize> {
+    // Normalize separators to forward slash for consistent matching
+    let normalized = root_path.replace('\\', "/").trim_end_matches('/').to_string();
+    let pattern = format!("{}%", normalized);
+
+    // Find series that have at least one episode under this root
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT series_id FROM episodes WHERE file_path LIKE ?1"
+    )?;
+    let series_ids: Vec<i64> = stmt
+        .query_map(params![pattern], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let count = series_ids.len();
+    for id in &series_ids {
+        conn.execute("DELETE FROM series WHERE id = ?1", params![id])?;
+    }
+    Ok(count)
+}
+
 // ── Cleanup ──────────────────────────────────────────────────────────────────
 
 /// Delete episodes whose file_path no longer exists on disk,
@@ -661,5 +687,83 @@ pub fn delete_missing_episodes(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    Ok(())
+}
+
+// ── Data stats ──────────────────────────────────────────────────────────────
+
+/// Lightweight stats for the 数据 tab: cache size is computed on the Rust side;
+/// these counts come from SQLite.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DataStats {
+    pub series_total: i64,
+    pub series_with_metadata: i64,
+    pub episodes_with_progress: i64,
+    pub episodes_total: i64,
+}
+
+pub fn get_data_stats(conn: &Connection) -> Result<DataStats> {
+    let series_total: i64 =
+        conn.query_row("SELECT COUNT(*) FROM series", [], |r| r.get(0))?;
+    let series_with_metadata: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM series WHERE bangumi_id IS NOT NULL OR tmdb_id IS NOT NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    let episodes_with_progress: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM episodes WHERE watched_progress > 0",
+        [],
+        |r| r.get(0),
+    )?;
+    let episodes_total: i64 =
+        conn.query_row("SELECT COUNT(*) FROM episodes", [], |r| r.get(0))?;
+
+    Ok(DataStats {
+        series_total,
+        series_with_metadata,
+        episodes_with_progress,
+        episodes_total,
+    })
+}
+
+// ── Reset metadata ──────────────────────────────────────────────────────────
+
+/// Clear all fetched metadata while keeping scan results and watch progress.
+pub fn reset_metadata(conn: &Connection) -> Result<()> {
+    // Series-level metadata
+    conn.execute(
+        "UPDATE series SET bangumi_id = NULL, tmdb_id = NULL, synopsis = NULL, year = NULL, genres = NULL, score = NULL, updated_at = datetime('now')",
+        [],
+    )?;
+    // Episode-level metadata (stills, overview, air_date, runtime from TMDB)
+    conn.execute(
+        "UPDATE episodes SET still_path = NULL, still_url = NULL, overview = NULL, air_date = NULL, runtime = NULL, updated_at = datetime('now')",
+        [],
+    )?;
+    // Cast data
+    conn.execute("DELETE FROM series_cast", [])?;
+    conn.execute("DELETE FROM person", [])?;
+    Ok(())
+}
+
+// ── Clear watch progress ────────────────────────────────────────────────────
+
+pub fn clear_watch_progress(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "UPDATE episodes SET watched_progress = 0, watched_completed = 0, updated_at = datetime('now')",
+        [],
+    )?;
+    Ok(())
+}
+
+// ── Factory reset ───────────────────────────────────────────────────────────
+
+/// Delete all rows from all tables. Schema is preserved (tables are not dropped).
+pub fn factory_reset_db(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM series_cast", [])?;
+    conn.execute("DELETE FROM person", [])?;
+    conn.execute("DELETE FROM episodes", [])?;
+    conn.execute("DELETE FROM series", [])?;
+    conn.execute("VACUUM", [])?;
     Ok(())
 }

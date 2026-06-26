@@ -57,6 +57,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_libmpv::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED | StateFlags::VISIBLE | StateFlags::DECORATIONS).build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -66,6 +67,14 @@ pub fn run() {
         }))
         .manage(app_state)
         .setup(|app| {
+            // ── Startup cleanup: clear stale batch-fetch state ───────────
+            if let Ok(root) = crate::paths::data_root() {
+                let stale = root.join("mochi_batch_running");
+                if stale.exists() {
+                    std::fs::remove_file(&stale).ok();
+                }
+            }
+
             // ── System tray ────────────────────────────────────────────────
             let show_item = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
@@ -171,6 +180,14 @@ pub fn run() {
             commands::window_toggle_maximize,
             commands::window_close,
             commands::create_library_structure,
+            commands::batch_fetch_all_metadata,
+            commands::cancel_batch_fetch,
+            commands::get_batch_status,
+            commands::remove_root_dir,
+            commands::get_data_stats,
+            commands::reset_metadata,
+            commands::clear_watch_progress,
+            commands::factory_reset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

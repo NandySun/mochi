@@ -1,13 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { sectionTitle, actionBtn, label } from "../styles/settings";
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
+import { sectionTitle, label } from "../styles/settings";
 
 type CloseBehavior = "tray" | "exit";
 
@@ -17,35 +10,6 @@ const BEHAVIOR_OPTIONS: { value: CloseBehavior; label: string }[] = [
 ];
 
 export default function SettingsGeneral() {
-  const [cacheSize, setCacheSize] = useState<number | null>(null);
-  const [clearing, setClearing] = useState(false);
-  const [cleared, setCleared] = useState(false);
-
-  const loadCacheSize = useCallback(async () => {
-    try {
-      const size = await invoke<number>("get_cache_size");
-      setCacheSize(size);
-    } catch {
-      setCacheSize(null);
-    }
-  }, []);
-
-  useEffect(() => { loadCacheSize(); }, [loadCacheSize]);
-
-  const handleClearCache = async () => {
-    setClearing(true);
-    setCleared(false);
-    try {
-      await invoke("clear_cache");
-      setCleared(true);
-      await loadCacheSize();
-      setTimeout(() => setCleared(false), 2000);
-    } catch (e) {
-      console.error("Failed to clear cache:", e);
-    }
-    setClearing(false);
-  };
-
   // ── close behavior ─────────────────────────────────────────────────────────
   const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>("tray");
   const [behaviorLoaded, setBehaviorLoaded] = useState(false);
@@ -113,32 +77,6 @@ export default function SettingsGeneral() {
             </button>
           );
         })}
-      </div>
-
-      {/* ── 缓存管理 ─────────────────────────────────────────────── */}
-      <label style={label}>缓存管理</label>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 24,
-        }}
-      >
-        <button
-          style={{
-            ...actionBtn,
-            opacity: clearing ? 0.5 : 1,
-            cursor: clearing ? "default" : "pointer",
-          }}
-          disabled={clearing}
-          onClick={handleClearCache}
-        >
-          {cleared ? "已清除 ✓" : clearing ? "清除中…" : "清除缓存"}
-        </button>
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
-          {cacheSize !== null ? `当前缓存：${formatBytes(cacheSize)}` : "正在读取…"}
-        </span>
       </div>
 
       {/* ── 语言（预留占位） ────────────────────────────────────────── */}

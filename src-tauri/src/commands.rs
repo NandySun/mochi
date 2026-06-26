@@ -2,13 +2,26 @@ use crate::db::{self, Episode, Person, Series};
 use crate::metadata::{self, MetadataResult};
 use crate::scanner::{self, ScanResult};
 use rusqlite::Connection;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tauri::State;
+use tauri::Emitter;
 
 /// Application state holding the database connection and runtime config.
 pub struct AppState {
     pub db: Mutex<Connection>,
     pub close_behavior: Mutex<String>,
+}
+
+/// Cancellation flag for batch metadata fetch.
+static BATCH_CANCEL: OnceLock<AtomicBool> = OnceLock::new();
+
+/// Shared batch progress: (current, total).
+static BATCH_PROGRESS: OnceLock<Mutex<Option<(usize, usize)>>> = OnceLock::new();
+
+/// Return the path to the batch running state file.
+fn batch_state_path() -> Result<std::path::PathBuf, String> {
+    crate::paths::data_root().map(|p| p.join("mochi_batch_running"))
 }
 
 /// Persist a MetadataResult to the DB for a given series.
@@ -33,6 +46,43 @@ fn persist_metadata_result(
         result.score,
     )
     .map_err(|e| e.to_string())
+}
+
+/// Core metadata fetch for a single series: ID fast-path → search → TMDB backdrop enrichment.
+/// Shared between single-series and batch fetch.
+async fn fetch_series_metadata(
+    search_term: &str,
+    series_type: &str,
+    bangumi_id: Option<i64>,
+    tmdb_id: Option<i64>,
+    tmdb_api_key: Option<&str>,
+    proxy_url: Option<&str>,
+    force: bool,
+) -> Result<MetadataResult, String> {
+    let mut result = if let Some(bid) = bangumi_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
+        metadata::fetch_by_bangumi_id(bid as i32, proxy_url, force).await?
+    } else if series_type != "anime" {
+        if let Some(tid) = tmdb_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
+            let media_type = if series_type == "movie" { "movie" } else { "tv" };
+            let key = tmdb_api_key.ok_or("TMDB API key required for ID fetch")?;
+            metadata::fetch_by_tmdb_id(tid, media_type, key, "zh-CN", proxy_url, force).await?
+        } else {
+            metadata::fetch_metadata(search_term, series_type, tmdb_api_key, proxy_url, force).await?
+        }
+    } else {
+        metadata::fetch_metadata(search_term, series_type, tmdb_api_key, proxy_url, force).await?
+    };
+
+    // TMDB backdrop enrichment for anime that lack fanart
+    if result.fanart_path.is_none() && series_type == "anime" && tmdb_api_key.is_some() {
+        if let Ok(fanart) =
+            metadata::try_tmdb_backdrop(search_term, tmdb_api_key.unwrap(), proxy_url, force).await
+        {
+            result.fanart_path = Some(fanart);
+        }
+    }
+
+    Ok(result)
 }
 
 // ── Scan command ──────────────────────────────────────────────────────────────
@@ -102,6 +152,14 @@ pub fn scan_library(state: State<AppState>, root_path: String, root_type: Option
     db::delete_missing_episodes(&conn).map_err(|e| e.to_string())?;
 
     Ok(result)
+}
+
+/// Remove all series under a given root path from the database.
+/// Called when user removes a media library directory from settings.
+#[tauri::command]
+pub fn remove_root_dir(state: State<AppState>, root_path: String) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::delete_series_by_root_path(&conn, &root_path).map_err(|e| e.to_string())
 }
 
 // ── Series queries ────────────────────────────────────────────────────────────
@@ -217,23 +275,18 @@ pub async fn fetch_metadata(
         .cloned()
         .unwrap_or(search_term);
 
-    // ── ID fast-path: skip search if we already have an ID ────────────
-    // Only use fast-path when no manual override is given (user wants a fresh search)
-    // For anime, ignore tmdb_id (likely pollution from a previous fallback).
+    // ── Fetch metadata (ID fast-path when no manual override) ──────────
     let mut result = if search_term_override.is_none() {
-        if let Some(bid) = bangumi_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
-            metadata::fetch_by_bangumi_id(bid as i32, proxy_url.as_deref(), force).await?
-        } else if effective_type != "anime" {
-            if let Some(tid) = tmdb_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
-                let media_type = if effective_type == "movie" { "movie" } else { "tv" };
-                let key = tmdb_api_key.as_deref().ok_or("TMDB API key required for ID fetch")?;
-                metadata::fetch_by_tmdb_id(tid, media_type, key, "zh-CN", proxy_url.as_deref(), force).await?
-            } else {
-                metadata::fetch_metadata(&effective_term, &effective_type, tmdb_api_key.as_deref(), proxy_url.as_deref(), force).await?
-            }
-        } else {
-            metadata::fetch_metadata(&effective_term, &effective_type, tmdb_api_key.as_deref(), proxy_url.as_deref(), force).await?
-        }
+        fetch_series_metadata(
+            &effective_term,
+            &effective_type,
+            bangumi_id,
+            tmdb_id,
+            tmdb_api_key.as_deref(),
+            proxy_url.as_deref(),
+            force,
+        )
+        .await?
     } else {
         // Manual override: always search, skip ID fast-path
         metadata::fetch_metadata(&effective_term, &effective_type, tmdb_api_key.as_deref(), proxy_url.as_deref(), force).await?
@@ -244,26 +297,6 @@ pub async fn fetch_metadata(
     // metadata refresh to fix series that weren't pre-organized correctly.
     if effective_type != "unknown" {
         result.series_type = effective_type.clone();
-    }
-
-    // ── TMDB backdrop enrichment for anime ────────────────────────────
-    // Bangumi doesn't provide banners/backdrops. When we already have a
-    // bangumi_id (ID fast-path above), the TMDB backdrop search is skipped.
-    // Do it here as a post-fetch step for all anime results that lack fanart.
-    if result.fanart_path.is_none()
-        && effective_type == "anime"
-        && tmdb_api_key.is_some()
-    {
-        if let Ok(fanart) = crate::metadata::try_tmdb_backdrop(
-            &effective_term,
-            tmdb_api_key.as_deref().unwrap(),
-            proxy_url.as_deref(),
-            force,
-        )
-        .await
-        {
-            result.fanart_path = Some(fanart);
-        }
     }
 
     // Persist to DB
@@ -419,6 +452,46 @@ pub fn clear_cache() -> Result<u64, String> {
         }
     }
     Ok(total)
+}
+
+// ── Data stats ──────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_data_stats(state: State<AppState>) -> Result<db::DataStats, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::get_data_stats(&conn).map_err(|e| e.to_string())
+}
+
+// ── Reset metadata ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn reset_metadata(state: State<AppState>) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::reset_metadata(&conn).map_err(|e| e.to_string())?;
+    Ok("已重置所有元数据".to_string())
+}
+
+// ── Clear watch progress ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn clear_watch_progress(state: State<AppState>) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::clear_watch_progress(&conn).map_err(|e| e.to_string())?;
+    Ok("已清除所有观看记录".to_string())
+}
+
+// ── Factory reset ───────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn factory_reset(state: State<AppState>) -> Result<String, String> {
+    // 1. Clear database
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::factory_reset_db(&conn).map_err(|e| e.to_string())?;
+    }
+    // 2. Clear image cache
+    let _ = clear_cache();
+    Ok("done".to_string())
 }
 
 /// Find a series by its folder_name (used during verdict flow to get series_id).
@@ -731,4 +804,125 @@ pub fn create_library_structure(base_path: String) -> Result<(), String> {
             .map_err(|e| format!("create {sub} failed: {e}"))?;
     }
     Ok(())
+}
+
+// ── Batch metadata fetch ────────────────────────────────────────────────────
+
+/// Batch fetch metadata for all series.
+/// Runs as a background task in Rust, emits progress events to the frontend.
+#[tauri::command]
+pub async fn batch_fetch_all_metadata(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    tmdb_api_key: Option<String>,
+    proxy_url: Option<String>,
+) -> Result<(), String> {
+    // Initialize cancellation flag
+    let cancel = BATCH_CANCEL.get_or_init(|| AtomicBool::new(false));
+    if cancel.load(Ordering::SeqCst) {
+        return Err("Batch fetch already running".to_string());
+    }
+    cancel.store(false, Ordering::SeqCst);
+
+    // Initialize progress tracker
+    let progress = BATCH_PROGRESS.get_or_init(|| Mutex::new(None));
+
+    // Write state file for cross-session cleanup
+    if let Ok(state_path) = batch_state_path() {
+        std::fs::write(&state_path, "1").ok();
+    }
+
+    // Get all series from DB
+    let all = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::get_all_series(&conn).map_err(|e| e.to_string())?
+    };
+
+    let total = all.len();
+    app.emit("batch-fetch-start", total).ok();
+
+    for (i, series) in all.iter().enumerate() {
+        // Check cancellation
+        if cancel.load(Ordering::SeqCst) {
+            app.emit("batch-fetch-cancelled", ()).ok();
+            break;
+        }
+
+        app.emit("batch-fetch-progress", serde_json::json!({
+            "current": i + 1,
+            "total": total,
+            "seriesName": series.display_name,
+        })).ok();
+
+        // Update shared progress for cross-component status query
+        if let Ok(mut p) = progress.lock() {
+            *p = Some((i + 1, total));
+        }
+
+        // Fetch metadata
+        let key = tmdb_api_key.as_deref();
+        let proxy = proxy_url.as_deref();
+        match fetch_series_metadata(
+            &series.search_term,
+            &series.series_type,
+            series.bangumi_id,
+            series.tmdb_id,
+            key,
+            proxy,
+            true,
+        )
+        .await
+        {
+            Ok(result) => {
+                let conn = state.db.lock().map_err(|e| e.to_string())?;
+                persist_metadata_result(&conn, series.id, &result).ok();
+            }
+            Err(_) => { /* skip failed series */ }
+        }
+
+        // Fetch cast (quiet)
+        if let Some(k) = key {
+            crate::metadata::fetch_cast(&state.db, series.id, Some(k), proxy).await.ok();
+        }
+
+        // Fetch episode metadata (quiet)
+        if let Some(k) = key {
+            crate::metadata::fetch_episode_metadata(&state.db, series.id, k, proxy).await.ok();
+        }
+
+        // Rate limit: 250ms between series (TMDB free tier: ~40 req/s)
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+
+    // Cleanup
+    if let Ok(state_path) = batch_state_path() {
+        std::fs::remove_file(&state_path).ok();
+    }
+    cancel.store(false, Ordering::SeqCst);
+    if let Ok(mut p) = progress.lock() {
+        *p = None;
+    }
+    app.emit("batch-fetch-complete", ()).ok();
+
+    Ok(())
+}
+
+/// Cancel a running batch metadata fetch.
+#[tauri::command]
+pub fn cancel_batch_fetch() -> Result<(), String> {
+    if let Some(cancel) = BATCH_CANCEL.get() {
+        cancel.store(true, Ordering::SeqCst);
+    }
+    Ok(())
+}
+
+/// Query whether a batch fetch is running and its progress.
+/// Returns None if no batch is active, or Some((current, total)).
+#[tauri::command]
+pub fn get_batch_status() -> Result<Option<(usize, usize)>, String> {
+    let progress = BATCH_PROGRESS
+        .get()
+        .and_then(|p| p.lock().ok())
+        .and_then(|p| *p);
+    Ok(progress)
 }

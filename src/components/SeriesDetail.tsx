@@ -185,6 +185,19 @@ export default function SeriesDetail() {
   // Episode strip scroll ref (for resume auto-scroll)
   const epStripRef = useRef<HTMLDivElement>(null);
 
+  // Season switching for multi-season series
+  const seasons = [...new Set(episodes.map((ep) => ep.season_number))].sort((a, b) => a - b);
+  const [selectedSeason, setSelectedSeason] = useState<number>(seasons[0] ?? 1);
+
+  // Keep selectedSeason valid when episodes change
+  useEffect(() => {
+    if (seasons.length > 0 && !seasons.includes(selectedSeason)) {
+      setSelectedSeason(seasons[0]);
+    } else if (seasons.length > 0 && selectedSeason === 0) {
+      setSelectedSeason(seasons[0]);
+    }
+  }, [seasons, selectedSeason]);
+
   // Native wheel interception — React onWheel is sometimes bypassed by
   // the browser compositor. addEventListener with { passive: false }
   // guarantees we get first crack at the event.
@@ -826,16 +839,57 @@ export default function SeriesDetail() {
                 marginBottom: 12,
               }}
             >
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "rgba(232,228,223,0.33)",
-                  textTransform: "uppercase",
-                  letterSpacing: 1.5,
-                }}
-              >
-                剧集
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "rgba(232,228,223,0.33)",
+                    textTransform: "uppercase",
+                    letterSpacing: 1.5,
+                  }}
+                >
+                  剧集
+                </span>
+                {seasons.length > 1 && (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {seasons.map((s) => {
+                      const isActive = s === selectedSeason;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => setSelectedSeason(s)}
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            border: "none",
+                            cursor: "pointer",
+                            background: isActive ? "#c47e3a" : "rgba(255,255,255,0.06)",
+                            color: isActive ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.35)",
+                            transition: "all 0.2s",
+                            fontFamily: "inherit",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.1)";
+                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.55)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.35)";
+                            }
+                          }}
+                        >
+                          S{s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <span
                 onClick={() => setEpisodeModalOpen(true)}
                 style={{
@@ -874,16 +928,18 @@ export default function SeriesDetail() {
                 }}
               >
                 <style>{`.ep-strip::-webkit-scrollbar { display: none; }`}</style>
-                {episodes.map((ep) => (
-                  <EpStripCard
-                    key={ep.id}
-                    episode={ep}
-                    isResume={ep.id === resumeEp?.id}
-                    cardW={r.cardW}
-                    cardH={r.cardH}
-                    onPlay={(epId) => navigate(`/play/${epId}`)}
-                  />
-                ))}
+                {episodes
+                  .filter((ep) => ep.season_number === selectedSeason)
+                  .map((ep) => (
+                    <EpStripCard
+                      key={ep.id}
+                      episode={ep}
+                      isResume={ep.id === resumeEp?.id}
+                      cardW={r.cardW}
+                      cardH={r.cardH}
+                      onPlay={(epId) => navigate(`/play/${epId}`)}
+                    />
+                  ))}
               </div>
             </div>
           </motion.div>

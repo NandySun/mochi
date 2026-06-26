@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-shell";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Series, SeriesScan } from "../types";
+import type { SeriesScan } from "../types";
 import { spring } from "../animations/tokens";
 import { BreathingDot } from "./BreathingDot";
 import { sectionTitle, actionBtn, label } from "../styles/settings";
@@ -23,7 +24,7 @@ const ROOT_TYPES = [
   { key: "variety", label: "综艺" },
 ] as const;
 
-const DEFAULT_DIRS: RootDirEntry[] = [{ path: "D:\\Video", type: "auto" }];
+const DEFAULT_DIRS: RootDirEntry[] = [];
 
 const TMDB_KEY = "mochi_tmdb_key";
 const PROXY_KEY = "mochi_proxy_url";
@@ -59,7 +60,6 @@ export default function SettingsMedia() {
   const [scanning, setScanning] = useState(false);
   const [scanPath, setScanPath] = useState<string | null>(null);
   const [scanCount, setScanCount] = useState(0);
-  const [clearVerdictStatus, setClearVerdictStatus] = useState<string | null>(null);
 
   // ── Confirm modal state ──────────────────────────────────────────────────
   const [confirmModal, setConfirmModal] = useState<{
@@ -76,44 +76,65 @@ export default function SettingsMedia() {
   const [proxyUrl, setProxyUrl] = useState(
     () => localStorage.getItem(PROXY_KEY) ?? DEFAULT_PROXY
   );
-  const [batchStatus, setBatchStatus] = useState<string | null>(
-    () => localStorage.getItem("mochi_batch_fetch_running") ? "后台拉取中…" : null
-  );
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
+
+  // ── Subscribe to batch fetch events from Rust backend ─────────────
+  useEffect(() => {
+    const unlistens: Array<() => void> = [];
+
+    // On mount: check if a batch is already running
+    invoke<[number, number] | null>("get_batch_status").then((status) => {
+      if (status) {
+        setBatchStatus(`正在拉取 (${status[0]}/${status[1]})…`);
+      }
+    }).catch(() => {});
+
+    listen<number>("batch-fetch-start", () => {
+      setBatchStatus("准备中…");
+    }).then((fn) => unlistens.push(fn));
+
+    listen<{ current: number; total: number; seriesName: string }>(
+      "batch-fetch-progress",
+      (event) => {
+        setBatchStatus(`正在拉取 (${event.payload.current}/${event.payload.total})…`);
+      }
+    ).then((fn) => unlistens.push(fn));
+
+    listen("batch-fetch-complete", () => {
+      setBatchStatus("完成");
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+      setTimeout(() => setBatchStatus(null), 3000);
+    }).then((fn) => unlistens.push(fn));
+
+    listen("batch-fetch-cancelled", () => {
+      setBatchStatus(null);
+    }).then((fn) => unlistens.push(fn));
+
+    return () => {
+      unlistens.forEach((fn) => fn());
+    };
+  }, []);
 
   const saveTmdbKey = () => localStorage.setItem(TMDB_KEY, tmdbKey);
   const saveProxyUrl = () => localStorage.setItem(PROXY_KEY, proxyUrl);
 
   const handleBatchFetch = async () => {
-    if (localStorage.getItem("mochi_batch_fetch_running")) return;
-    localStorage.setItem("mochi_batch_fetch_running", "1");
+    if (batchStatus) return;
     setBatchStatus("准备中…");
-    window.dispatchEvent(new CustomEvent("mochi:batch-fetch-start"));
     try {
-      const all: Series[] = await invoke("get_all_series");
-      for (let i = 0; i < all.length; i++) {
-        setBatchStatus(`正在拉取 (${i + 1}/${all.length})…`);
-        window.dispatchEvent(new CustomEvent("mochi:batch-fetch-progress", {
-          detail: { current: i + 1, total: all.length },
-        }));
-        try {
-          await invoke("fetch_metadata", {
-            seriesId: all[i].id,
-            tmdbApiKey: tmdbKey,
-            proxyUrl,
-            force: true,
-          });
-          try { await invoke("fetch_cast", { seriesId: all[i].id, tmdbApiKey: tmdbKey }); } catch {}
-          try { await invoke("fetch_episode_metadata", { seriesId: all[i].id, tmdbApiKey: tmdbKey }); } catch {}
-        } catch { /* skip failed */ }
-      }
-      setBatchStatus("完成");
-      window.dispatchEvent(new CustomEvent("mochi:batch-fetch-complete"));
-    } catch {
-      setBatchStatus("获取列表失败");
+      await invoke("batch_fetch_all_metadata", {
+        tmdbApiKey: tmdbKey || undefined,
+        proxyUrl: proxyUrl || undefined,
+      });
+    } catch (e) {
+      setBatchStatus(`失败: ${e}`);
+      setTimeout(() => setBatchStatus(null), 3000);
     }
-    localStorage.removeItem("mochi_batch_fetch_running");
-    window.dispatchEvent(new CustomEvent("mochi:data-changed"));
-    setTimeout(() => setBatchStatus(null), 3000);
+  };
+
+  const cancelBatchFetch = async () => {
+    await invoke("cancel_batch_fetch");
+    setBatchStatus(null);
   };
 
   const showConfirm = (title: string, onConfirm: () => void) => {
@@ -124,31 +145,89 @@ export default function SettingsMedia() {
     localStorage.setItem(ROOT_DIRS_KEY, JSON.stringify(rootDirs));
   }, [rootDirs]);
 
-  const removeDir = (i: number) => {
-    setRootDirs((prev) => prev.filter((_, idx) => idx !== i));
+  // Reload rootDirs when external changes happen (e.g. drag-and-drop)
+  useEffect(() => {
+    const handler = () => setRootDirs(loadRootDirs());
+    window.addEventListener("mochi:data-changed", handler);
+    return () => window.removeEventListener("mochi:data-changed", handler);
+  }, []);
+
+  const removeDir = async (i: number) => {
+    const dir = rootDirs[i];
+    try {
+      await invoke("remove_root_dir", { rootPath: dir.path });
+    } catch {
+      // proceed even if DB cleanup fails
+    }
+    const updated = rootDirs.filter((_, idx) => idx !== i);
+    localStorage.setItem(ROOT_DIRS_KEY, JSON.stringify(updated));
+    setRootDirs(updated);
+    window.dispatchEvent(new CustomEvent("mochi:data-changed"));
   };
 
-  const startAdd = async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true });
-      if (typeof selected === "string" && selected) {
-        setRootDirs((prev) => [...prev, { path: selected, type: "auto" }]);
-        return;
-      }
-    } catch {
-      // plugin not available, fall back to text input
-    }
+  const changeDirType = (index: number) => {
+    setRootDirs((prev) => {
+      const next = [...prev];
+      const types = ROOT_TYPES.map((t) => t.key);
+      const currentIdx = types.indexOf(next[index].type);
+      const nextIdx = (currentIdx + 1) % types.length;
+      next[index] = { ...next[index], type: types[nextIdx] };
+      return next;
+    });
+  };
+
+  const startAdd = () => {
     setAdding(true);
     setAddValue("");
     setAddType("auto");
     setTimeout(() => addInputRef.current?.focus(), 0);
   };
 
-  const confirmAdd = () => {
+  const handleBrowse = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ directory: true });
+      if (typeof selected === "string" && selected) {
+        setAddValue(selected);
+        setTimeout(() => addInputRef.current?.focus(), 0);
+      }
+    } catch {
+      // dialog plugin unavailable
+    }
+  };
+
+  const confirmAdd = async () => {
     const trimmed = addValue.trim();
     if (trimmed) {
-      setRootDirs((prev) => [...prev, { path: trimmed, type: addType }]);
+      const entry: RootDirEntry = { path: trimmed, type: addType };
+      setRootDirs((prev) => [...prev, entry]);
+      // Auto-scan the newly added directory
+      setScanning(true);
+      setScanPath(trimmed);
+      setScanCount(0);
+      try {
+        const result = await invoke<{ series: { folder_name: string }[]; ambiguous: SeriesScan[] }>("scan_library", {
+          rootPath: trimmed,
+          rootType: addType === "auto" ? null : addType,
+        });
+        setScanCount(result.series.length);
+        if (result.ambiguous && result.ambiguous.length > 0) {
+          const existingRaw = localStorage.getItem(AMBIGUOUS_KEY);
+          const existing: SeriesScan[] = existingRaw ? JSON.parse(existingRaw) : [];
+          const merged = [...existing];
+          for (const amb of result.ambiguous) {
+            if (!merged.some((a) => a.folder_name === amb.folder_name)) {
+              merged.push(amb);
+            }
+          }
+          localStorage.setItem(AMBIGUOUS_KEY, JSON.stringify(merged));
+        }
+        window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+      } catch {
+        /* skip failed */
+      }
+      setScanning(false);
+      setScanPath(null);
     }
     setAdding(false);
     setAddValue("");
@@ -188,45 +267,34 @@ export default function SettingsMedia() {
     });
   };
 
-  const handleClearVerdicts = () => {
-    if (rootDirs.length === 0) {
-      setClearVerdictStatus("无媒体库目录");
-      setTimeout(() => setClearVerdictStatus(null), 2000);
-      return;
-    }
-    showConfirm("确定要清除所有裁决数据吗？这将删除所有 .mochi 文件并重置元数据匹配记录。", async () => {
-      setClearVerdictStatus("清除中…");
-      try {
-        const msg = await invoke<string>("clear_all_verdicts", { rootPaths: rootDirs.map(d => d.path) });
-        setClearVerdictStatus(msg);
-        localStorage.removeItem(AMBIGUOUS_KEY);
-        window.dispatchEvent(new CustomEvent("mochi:data-changed"));
-      } catch (err) {
-        setClearVerdictStatus(`清除失败: ${err}`);
-      }
-      setTimeout(() => setClearVerdictStatus(null), 3000);
-    });
-  };
-
   return (
     <>
       <h2 style={sectionTitle}>媒体库</h2>
+
+      {/* ── 目录 ──────────────────────────────────────────── */}
+      <label style={{ ...label, marginBottom: 10 }}>目录</label>
 
       {/* root dirs list */}
       {rootDirs.map((dir, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", marginBottom: 8, gap: 8 }}>
           <span style={dirPath}>{dir.path}</span>
-          <span style={{
-            fontSize: 10,
-            padding: "2px 8px",
-            borderRadius: 4,
-            background: "rgba(255,255,255,0.06)",
-            color: dir.type === "auto" ? "rgba(255,255,255,0.25)" : "rgba(255,180,120,0.6)",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}>
+          <button
+            onClick={() => changeDirType(i)}
+            title="点击切换类型"
+            style={{
+              fontSize: 10,
+              padding: "2px 8px",
+              borderRadius: 4,
+              border: "none",
+              background: "rgba(255,255,255,0.06)",
+              color: dir.type === "auto" ? "rgba(255,255,255,0.25)" : "rgba(255,180,120,0.6)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          >
             {ROOT_TYPES.find(t => t.key === dir.type)?.label ?? dir.type}
-          </span>
+          </button>
           <button
             style={deleteBtn}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#e81123")}
@@ -240,7 +308,7 @@ export default function SettingsMedia() {
 
       {adding && (
         <div style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             <input
               ref={addInputRef}
               style={{ ...dirPath, outline: "none", border: "none" }}
@@ -250,16 +318,13 @@ export default function SettingsMedia() {
                 if (e.key === "Enter") confirmAdd();
                 if (e.key === "Escape") { setAdding(false); setAddValue(""); setAddType("auto"); }
               }}
-              onBlur={confirmAdd}
-              placeholder="输入路径后按 Enter 确认"
+              placeholder="输入路径或点击浏览选择"
             />
-            <button
-              style={deleteBtn}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#4caf50")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.3)")}
-              onClick={confirmAdd}
-            >
-              ✓
+            <button style={browseBtn} onClick={handleBrowse}>
+              浏览
+            </button>
+            <button style={confirmBtn} onClick={confirmAdd}>
+              添加
             </button>
           </div>
           <div style={{ display: "flex", gap: 4 }}>
@@ -306,19 +371,9 @@ export default function SettingsMedia() {
         )}
       </div>
 
-      {/* clear verdicts */}
-      <div style={{ marginTop: 12 }}>
-        <button style={textBtn} onClick={handleClearVerdicts}>清除所有裁决数据</button>
-        {clearVerdictStatus && (
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginLeft: 10 }}>
-            {clearVerdictStatus}
-          </span>
-        )}
-      </div>
-
-      {/* ── 元数据 ─────────────────────────────────────────── */}
-      <div style={{ marginTop: 28 }}>
-        <h2 style={sectionTitle}>元数据</h2>
+      {/* ── 元数据源 ───────────────────────────────────────── */}
+      <div style={{ marginTop: 28, borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 24 }}>
+        <h2 style={{ ...sectionTitle, marginBottom: 10 }}>元数据源</h2>
 
         {/* TMDB Key */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -380,7 +435,7 @@ export default function SettingsMedia() {
             placeholder="粘贴从 TMDB 获取的免费 API Key，仅存本地"
           />
           <button style={eyeBtn} onClick={() => setShowKey((v) => !v)} tabIndex={-1}>
-            {showKey ? "🙈" : "👁"}
+            {showKey ? "隐藏" : "显示"}
           </button>
         </div>
 
@@ -402,6 +457,22 @@ export default function SettingsMedia() {
             <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
               {batchStatus}
             </span>
+            {batchStatus && batchStatus !== "完成" && !batchStatus.startsWith("失败") && (
+              <button
+                onClick={cancelBatchFetch}
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 6,
+                  color: "rgba(255,255,255,0.3)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  padding: "2px 10px",
+                }}
+              >
+                取消
+              </button>
+            )}
           </div>
         ) : (
           <button style={actionBtn} onClick={handleBatchFetch}>
@@ -543,6 +614,30 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
   background: "rgba(255,255,255,0.05)",
   color: "rgba(255,255,255,0.7)",
+};
+
+const browseBtn: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 6,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(255,255,255,0.06)",
+  color: "rgba(255,255,255,0.5)",
+  fontSize: 12,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+};
+
+const confirmBtn: React.CSSProperties = {
+  padding: "8px 14px",
+  borderRadius: 6,
+  border: "1px solid rgba(196,126,58,0.3)",
+  background: "rgba(196,126,58,0.1)",
+  color: "#c47e3a",
+  fontSize: 12,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
 
 const eyeBtn: React.CSSProperties = {

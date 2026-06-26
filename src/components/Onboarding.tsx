@@ -35,6 +35,25 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
     }
   };
 
+  const handleSelectExisting = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ directory: true, title: "选择已有媒体文件夹" });
+      if (typeof selected !== "string" || !selected) return;
+
+      localStorage.setItem(
+        "mochi_root_dirs",
+        JSON.stringify([{ path: selected, type: "auto" }])
+      );
+      finish();
+      // Trigger scan after onboarding closes
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch {
+      finish();
+      onOpenSettings();
+    }
+  };
+
   const handleGoToSettings = () => {
     finish();
     onOpenSettings();
@@ -125,11 +144,34 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         </span>
       </motion.button>
 
+      {/* Card: select existing folder */}
+      <motion.button
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...spring.gentle, delay: 0.57 }}
+        whileHover={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        whileTap={{ scale: 0.98 }}
+        onClick={handleSelectExisting}
+        style={{
+          padding: "14px 28px",
+          borderRadius: 12,
+          border: "1px solid rgba(196,180,140,0.12)",
+          background: "rgba(20,20,20,0.85)",
+          cursor: "pointer",
+          fontSize: 14,
+          color: "rgba(255,255,255,0.55)",
+          maxWidth: 360,
+          width: "80%",
+        }}
+      >
+        选择已有文件夹
+      </motion.button>
+
       {/* Card: go to settings */}
       <motion.button
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ ...spring.gentle, delay: 0.6 }}
+        transition={{ ...spring.gentle, delay: 0.64 }}
         whileHover={{ backgroundColor: "rgba(255,255,255,0.04)" }}
         whileTap={{ scale: 0.98 }}
         onClick={handleGoToSettings}

@@ -18,6 +18,7 @@
     "core:window:allow-toggle-maximize",
     "window-state:default",
     "libmpv:default",
-    "shell:allow-open"
+    "shell:allow-open",
+    "dialog:default"
   ]
 }
