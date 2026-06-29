@@ -180,6 +180,7 @@ pub fn run() {
             commands::set_close_behavior,
             commands::set_fullscreen,
             commands::get_fullscreen,
+            commands::window_minimize,
             commands::window_toggle_maximize,
             commands::window_close,
             commands::create_library_structure,

@@ -8,6 +8,7 @@ import { useImageSrc } from "../hooks/useImageSrc";
 import { useBackground, GRADIENTS } from "../hooks/useBackground";
 import { BreathingDot } from "./BreathingDot";
 import MetadataVerdict from "./MetadataVerdict";
+import SearchOverlay from "./SearchOverlay";
 
 const FILTERS = [
   { key: "resume", label: "继续" },
@@ -99,6 +100,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     }
   });
   const [showVerdict, setShowVerdict] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [tmdbKey] = useState<string | null>(() => localStorage.getItem("mochi_tmdb_key"));
   const [proxyUrl] = useState<string | null>(() => localStorage.getItem("mochi_proxy_url"));
   const containerRef = useRef<HTMLDivElement>(null);
@@ -267,6 +269,8 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't intercept carousel keys when search is open
+      if (showSearch) return;
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         setSelectedIndex((i) => Math.max(0, i - 1));
@@ -283,7 +287,25 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filtered.length, selected, navigate, filter, resumeEp]);
+  }, [filtered.length, selected, navigate, filter, resumeEp, showSearch]);
+
+  // ── Search trigger ───────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowSearch(true);
+      } else if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     if (filtered.length <= 1) return;
@@ -440,6 +462,34 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
 
         <div style={{ flex: 1 }} />
 
+        {/* ── Search button ──────────────────────────────────────── */}
+        <motion.button
+          onClick={() => setShowSearch(true)}
+          className="flex items-center justify-center cursor-pointer bg-transparent border-none"
+          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileTap={{ scale: 0.92 }}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.08)",
+            marginRight: 8,
+          }}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="rgba(255,255,255,0.45)"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </motion.button>
+
         {/* ── Settings gear ─────────────────────────────────────────── */}
         <motion.button
           onClick={onOpenSettings}
@@ -559,35 +609,92 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
             </AnimatePresence>
 
             {/* ── Focus indicator dots ────────────────────────────── */}
-            {filtered.length > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: "clamp(4px, 0.5vw, 6px)",
-                  marginTop: "clamp(6px, 0.8vw, 12px)",
-                }}
-              >
-                {filtered.map((_, i) => {
-                  const isDotActive = i === selectedIndex;
-                  return (
-                    <motion.div
-                      key={`dot-${i}`}
-                      layout
-                      animate={{
-                        width: isDotActive ? 6 : 4,
-                        height: isDotActive ? 6 : 4,
-                        backgroundColor: isDotActive
-                          ? "rgba(255,255,255,0.4)"
-                          : "rgba(255,255,255,0.1)",
-                      }}
-                      transition={spring.gentle}
-                      style={{ borderRadius: "50%" }}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            {filtered.length > 1 && (() => {
+              const MAX_VISIBLE = 7;
+              const showWindowed = filtered.length > MAX_VISIBLE;
+
+              const visibleIndices: number[] = showWindowed
+                ? (() => {
+                    const half = Math.floor(MAX_VISIBLE / 2);
+                    let start = selectedIndex - half;
+                    if (start < 0) start = 0;
+                    if (start > filtered.length - MAX_VISIBLE) start = filtered.length - MAX_VISIBLE;
+                    return Array.from({ length: MAX_VISIBLE }, (_, i) => start + i);
+                  })()
+                : [];
+
+              return (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    marginTop: "clamp(6px, 0.8vw, 12px)",
+                    ...(showWindowed
+                      ? {
+                          width: MAX_VISIBLE * 24,
+                          marginLeft: "auto",
+                          marginRight: "auto",
+                          overflow: "hidden",
+                          maskImage:
+                            "linear-gradient(to right, transparent 0%, black 14%, black 86%, transparent 100%)",
+                          WebkitMaskImage:
+                            "linear-gradient(to right, transparent 0%, black 14%, black 86%, transparent 100%)",
+                        }
+                      : {}),
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      gap: 2,
+                      ...(showWindowed ? { padding: "0 10px" } : {}),
+                    }}
+                  >
+                    {(showWindowed ? visibleIndices : filtered.map((_, i) => i)).map(
+                      (i) => {
+                        const isActive = i === selectedIndex;
+                        return (
+                          <button
+                            key={i}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedIndex(i);
+                            }}
+                            aria-label={`跳转到第 ${i + 1} 项`}
+                            style={{
+                              width: 24,
+                              height: 20,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: 0,
+                              flexShrink: 0,
+                            }}
+                          >
+                            <motion.div
+                              layout
+                              animate={{
+                                width: isActive ? 6 : 4,
+                                height: isActive ? 6 : 4,
+                                backgroundColor: isActive
+                                  ? "rgba(255,255,255,0.4)"
+                                  : "rgba(255,255,255,0.1)",
+                              }}
+                              transition={spring.gentle}
+                              style={{ borderRadius: "50%" }}
+                            />
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </>
       )}
@@ -644,6 +751,15 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                 .then(setSeries)
                 .catch(console.error);
             }}
+          />
+        )}
+      </AnimatePresence>
+      {/* ── Search overlay ──────────────────────────────────────── */}
+      <AnimatePresence>
+        {showSearch && (
+          <SearchOverlay
+            series={series}
+            onClose={() => setShowSearch(false)}
           />
         )}
       </AnimatePresence>

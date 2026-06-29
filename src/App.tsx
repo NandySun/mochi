@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, LayoutGroup, motion, useMotionValue, useSpring } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -253,16 +253,22 @@ export default function App() {
   }, []);
 
   // ── Global keyboard shortcuts ───────────────────────────────────────
+  const navigate = useNavigate();
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === ",") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (location.pathname !== "/") {
+          navigate("/");
+        }
+      } else if (e.ctrlKey && e.key === ",") {
         e.preventDefault();
         setShowSettings(true);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [location.pathname, navigate]);
 
   // ── Drag-and-drop folder import ─────────────────────────────────────
   useEffect(() => {

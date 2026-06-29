@@ -8,10 +8,11 @@ import SettingsPlayback from "./SettingsPlayback";
 import SettingsGeneral from "./SettingsGeneral";
 import SettingsData from "./SettingsData";
 import SettingsAbout from "./SettingsAbout";
+import SettingsShortcuts from "./SettingsShortcuts";
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
-type SectionId = "media" | "playback" | "general" | "data" | "about";
+type SectionId = "media" | "playback" | "general" | "shortcuts" | "data" | "about";
 
 interface SectionDef {
   id: SectionId;
@@ -20,11 +21,12 @@ interface SectionDef {
 }
 
 const SECTIONS: SectionDef[] = [
-  { id: "media",    label: "媒体库", component: SettingsMedia },
-  { id: "playback", label: "播放",   component: SettingsPlayback },
-  { id: "general",  label: "通用",   component: SettingsGeneral },
-  { id: "data",     label: "数据",   component: SettingsData },
-  { id: "about",    label: "关于",   component: SettingsAbout },
+  { id: "media",     label: "媒体库",  component: SettingsMedia },
+  { id: "playback",  label: "播放",    component: SettingsPlayback },
+  { id: "general",   label: "通用",    component: SettingsGeneral },
+  { id: "shortcuts", label: "快捷键",  component: SettingsShortcuts },
+  { id: "data",      label: "数据",    component: SettingsData },
+  { id: "about",     label: "关于",    component: SettingsAbout },
 ];
 
 export default function Settings({ onClose }: { onClose: () => void }) {
