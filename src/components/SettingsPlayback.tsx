@@ -30,9 +30,9 @@ export default function SettingsPlayback() {
               style={{
                 padding: "12px 16px",
                 borderRadius: 10,
-                border: isActive ? `1.5px solid ${t.accent}` : "1px solid rgba(255,255,255,0.1)",
-                background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
-                color: isActive ? t.accent : "rgba(255,255,255,0.4)",
+                border: isActive ? `1.5px solid ${t.accent}` : "1px solid var(--color-surface)",
+                background: isActive ? "var(--color-surface-elevated)" : "transparent",
+                color: isActive ? t.accent : "var(--color-text-muted)",
                 cursor: "pointer",
                 minWidth: 100,
                 textAlign: "center" as const,

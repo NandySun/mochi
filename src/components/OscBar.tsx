@@ -358,7 +358,7 @@ export default function OscBar({
             style={{
               width: 28,
               height: 90,
-              background: "rgba(0,0,0,0.7)",
+              background: "var(--color-overlay)",
               backdropFilter: "blur(8px)",
               borderRadius: 8,
               padding: "8px 0",
@@ -367,19 +367,19 @@ export default function OscBar({
               alignItems: "center",
             }}
           >
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", textAlign: "center", marginBottom: 2 }}>
+            <div style={{ fontSize: 9, color: "var(--color-text-secondary)", textAlign: "center", marginBottom: 2 }}>
               {Math.round(volume)}
             </div>
             <div
               ref={volTrackRef}
               className="relative"
-              style={{ width: 2, flex: 1, background: "rgba(255,255,255,0.1)", margin: "0 auto" }}
+              style={{ width: 2, flex: 1, background: "var(--color-surface)", margin: "0 auto" }}
             >
               <div
                 className="absolute left-0 right-0 bottom-0"
                 style={{
                   height: `${(volume / 130) * 100}%`,
-                  background: "rgba(255,255,255,0.5)",
+                  background: "var(--color-text-secondary)",
                 }}
               />
               <motion.div
@@ -430,7 +430,7 @@ export default function OscBar({
             bottom: "100%",
             right: 0,
             marginBottom: 8,
-            background: "rgba(0,0,0,0.85)",
+            background: "var(--color-overlay)",
             backdropFilter: "blur(12px)",
             borderRadius: 8,
             minWidth: 140,
@@ -440,7 +440,7 @@ export default function OscBar({
         >
           {subtitleTracks.length > 0 && (
             <>
-              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", padding: "4px 8px" }}>
+              <div style={{ fontSize: 9, color: "var(--color-text-muted)", textTransform: "uppercase", padding: "4px 8px" }}>
                 字幕
               </div>
               <div
@@ -449,10 +449,10 @@ export default function OscBar({
                   padding: "6px 8px",
                   borderRadius: 4,
                   fontSize: 11,
-                  color: subtitleTracks.every((t) => !t.selected) ? "#fff" : "rgba(255,255,255,0.45)",
+                  color: subtitleTracks.every((t) => !t.selected) ? "#fff" : "var(--color-text-muted)",
                   cursor: "pointer",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-elevated)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "")}
               >
                 {subtitleTracks.every((t) => !t.selected) ? "• " : ""}关闭
@@ -465,10 +465,10 @@ export default function OscBar({
                     padding: "6px 8px",
                     borderRadius: 4,
                     fontSize: 11,
-                    color: t.selected ? "#fff" : "rgba(255,255,255,0.45)",
+                    color: t.selected ? "#fff" : "var(--color-text-muted)",
                     cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-elevated)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                 >
                   {t.selected ? "• " : ""}{t.title}
@@ -479,7 +479,7 @@ export default function OscBar({
 
           {audioTracks.length > 0 && (
             <>
-              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", padding: "4px 8px", marginTop: subtitleTracks.length > 0 ? 4 : 0 }}>
+              <div style={{ fontSize: 9, color: "var(--color-text-muted)", textTransform: "uppercase", padding: "4px 8px", marginTop: subtitleTracks.length > 0 ? 4 : 0 }}>
                 音轨
               </div>
               {audioTracks.map((t) => (
@@ -490,10 +490,10 @@ export default function OscBar({
                     padding: "6px 8px",
                     borderRadius: 4,
                     fontSize: 11,
-                    color: t.selected ? "#fff" : "rgba(255,255,255,0.45)",
+                    color: t.selected ? "#fff" : "var(--color-text-muted)",
                     cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-elevated)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                 >
                   {t.selected ? "• " : ""}{t.title}
@@ -503,7 +503,7 @@ export default function OscBar({
           )}
 
           {subtitleTracks.length === 0 && audioTracks.length === 0 && (
-            <div style={{ padding: "6px 8px", fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
+            <div style={{ padding: "6px 8px", fontSize: 11, color: "var(--color-text-muted)" }}>
               无可用轨道
             </div>
           )}
@@ -544,13 +544,13 @@ export default function OscBar({
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={spring.gentle}
             style={{
-              background: "rgba(20,20,22,0.88)",
+              background: "var(--color-modal-bg)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid var(--color-surface)",
               padding: 12,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
+              boxShadow: "0 8px 32px var(--color-overlay), 0 2px 8px rgba(0,0,0,0.2)",
             }}
           >
             <div
@@ -573,7 +573,7 @@ export default function OscBar({
                 let color: string;
 
                 if (isCurrent) {
-                  bg = "rgba(196,126,58,0.18)";
+                  bg = "var(--color-accent-dim)";
                   border = theme.accent;
                   color = "#fff";
                 } else if (isWatched) {
@@ -581,9 +581,9 @@ export default function OscBar({
                   border = "rgba(90,170,150,0.2)";
                   color = "rgba(90,170,150,0.6)";
                 } else {
-                  bg = "rgba(255,255,255,0.05)";
-                  border = "rgba(255,255,255,0.08)";
-                  color = "rgba(255,255,255,0.45)";
+                  bg = "var(--color-surface-elevated)";
+                  border = "var(--color-surface)";
+                  color = "var(--color-text-muted)";
                 }
 
                 return (
@@ -593,7 +593,7 @@ export default function OscBar({
                     onClick={() => { onEpisodeSelect(ep.id); setShowEpisodes(false); }}
                     whileHover={
                       !disabled
-                        ? { scale: 1.06, backgroundColor: isCurrent ? undefined : "rgba(255,255,255,0.1)" }
+                        ? { scale: 1.06, backgroundColor: isCurrent ? undefined : "var(--color-surface)" }
                         : {}
                     }
                     whileTap={!disabled ? { scale: 0.93 } : {}}
@@ -695,7 +695,7 @@ export default function OscBar({
             className="absolute left-0 top-0 bottom-0"
             style={{
               width: `${currentPct}%`,
-              background: isDragging ? "rgba(255,255,255,0.7)" : theme.playedBarColor,
+              background: isDragging ? "var(--color-text-secondary)" : theme.playedBarColor,
               borderRadius: currentTrackHeight,
             }}
           />
@@ -709,9 +709,9 @@ export default function OscBar({
                 marginBottom: 6,
                 padding: "2px 6px",
                 borderRadius: 4,
-                background: "rgba(0,0,0,0.75)",
+                background: "var(--color-overlay)",
                 fontSize: 10,
-                color: "rgba(255,255,255,0.7)",
+                color: "var(--color-text-secondary)",
                 whiteSpace: "nowrap",
               }}
             >

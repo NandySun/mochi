@@ -50,8 +50,8 @@ export default function SettingsGeneral() {
                 gap: 10,
                 padding: "10px 14px",
                 borderRadius: 8,
-                border: isActive ? "1px solid rgba(196,126,58,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                background: isActive ? "rgba(196,126,58,0.08)" : "transparent",
+                border: isActive ? "1px solid rgba(196,126,58,0.5)" : "1px solid var(--color-surface)",
+                background: isActive ? "var(--color-accent-dim)" : "transparent",
                 cursor: "pointer",
                 textAlign: "left" as const,
               }}
@@ -61,7 +61,7 @@ export default function SettingsGeneral() {
                   width: 16,
                   height: 16,
                   borderRadius: "50%",
-                  border: isActive ? "5px solid #c47e3a" : "2px solid rgba(255,255,255,0.2)",
+                  border: isActive ? "5px solid var(--color-accent)" : "2px solid var(--color-text-muted)",
                   flexShrink: 0,
                   boxSizing: "border-box",
                 }}
@@ -69,7 +69,7 @@ export default function SettingsGeneral() {
               <span
                 style={{
                   fontSize: 13,
-                  color: isActive ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)",
+                  color: isActive ? "var(--color-text)" : "var(--color-text-muted)",
                 }}
               >
                 {opt.label}
@@ -85,7 +85,7 @@ export default function SettingsGeneral() {
         style={{
           padding: "12px 14px",
           borderRadius: 8,
-          background: "rgba(255,255,255,0.03)",
+          background: "var(--color-surface-elevated)",
         }}
       >
         <p style={placeholder}>简体中文（默认） — 多语言支持规划中</p>
@@ -98,6 +98,6 @@ export default function SettingsGeneral() {
 
 const placeholder: React.CSSProperties = {
   fontSize: 13,
-  color: "rgba(255,255,255,0.2)",
+  color: "var(--color-text-muted)",
   margin: 0,
 };

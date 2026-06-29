@@ -92,7 +92,7 @@ export default function EpisodeModal({
               position: "fixed",
               inset: 0,
               zIndex: 200,
-              background: "rgba(0,0,0,0.4)",
+              background: "var(--color-overlay)",
             }}
           />
 
@@ -117,15 +117,15 @@ export default function EpisodeModal({
               style={{
                 width: "100%",
                 maxHeight: "78vh",
-                background: "#1a1714",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "var(--color-modal-bg)",
+                border: "1px solid var(--color-surface)",
                 borderRadius: 14,
-                boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
+                boxShadow: "0 24px 64px var(--color-overlay)",
                 display: "flex",
                 flexDirection: "column",
               }}
             >
-            <style>{`.ep-modal-body::-webkit-scrollbar { width:3px; } .ep-modal-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:3px; }`}</style>
+            <style>{`.ep-modal-body::-webkit-scrollbar { width:3px; } .ep-modal-body::-webkit-scrollbar-thumb { background:var(--color-surface); border-radius:3px; }`}</style>
 
             {/* Header */}
             <div
@@ -134,12 +134,12 @@ export default function EpisodeModal({
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "20px 24px 14px",
-                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                borderBottom: "1px solid var(--color-surface-elevated)",
                 flexShrink: 0,
               }}
             >
               <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(232,228,223,0.9)" }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>
                   全部剧集 · 第 {season} 季
                 </span>
 
@@ -159,21 +159,21 @@ export default function EpisodeModal({
                             borderRadius: 4,
                             border: "none",
                             cursor: "pointer",
-                            background: isActive ? "#c47e3a" : "rgba(255,255,255,0.06)",
-                            color: isActive ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.35)",
+                            background: isActive ? "var(--color-accent)" : "var(--color-surface-elevated)",
+                            color: isActive ? "var(--color-overlay)" : "var(--color-text-muted)",
                             transition: "all 0.2s",
                             fontFamily: "inherit",
                           }}
                           onMouseEnter={(e) => {
                             if (!isActive) {
-                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.1)";
-                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.55)";
+                              (e.target as HTMLElement).style.background = "var(--color-surface)";
+                              (e.target as HTMLElement).style.color = "var(--color-text-secondary)";
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (!isActive) {
-                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.35)";
+                              (e.target as HTMLElement).style.background = "var(--color-surface-elevated)";
+                              (e.target as HTMLElement).style.color = "var(--color-text-muted)";
                             }
                           }}
                         >
@@ -190,14 +190,14 @@ export default function EpisodeModal({
                   title={ascending ? "正序" : "逆序"}
                   style={{
                     fontSize: 12,
-                    color: "rgba(232,228,223,0.33)",
+                    color: "var(--color-text-muted)",
                     cursor: "pointer",
                     userSelect: "none",
                     padding: "2px 6px",
                     transition: "color 0.2s",
                   }}
-                  onMouseEnter={(e) => { (e.target as HTMLElement).style.color = "rgba(232,228,223,0.7)"; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.color = "rgba(232,228,223,0.33)"; }}
+                  onMouseEnter={(e) => { (e.target as HTMLElement).style.color = "var(--color-text-secondary)"; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.color = "var(--color-text-muted)"; }}
                 >
                   {ascending ? "↑" : "↓"}
                 </span>
@@ -210,9 +210,9 @@ export default function EpisodeModal({
                   width: 28,
                   height: 28,
                   borderRadius: "50%",
-                  background: "rgba(255,255,255,0.06)",
+                  background: "var(--color-surface-elevated)",
                   border: "none",
-                  color: "rgba(255,255,255,0.35)",
+                  color: "var(--color-text-muted)",
                   cursor: "pointer",
                   fontSize: 14,
                   display: "flex",
@@ -252,7 +252,7 @@ export default function EpisodeModal({
                     textAlign: "center",
                     padding: 40,
                     fontSize: 13,
-                    color: "rgba(255,255,255,0.2)",
+                    color: "var(--color-text-muted)",
                   }}
                 >
                   暂无剧集
@@ -309,7 +309,7 @@ function EpisodeCard({
           borderRadius: 6,
           position: "relative",
           overflow: "hidden",
-          outline: isResume ? "2px solid #c47e3a" : undefined,
+          outline: isResume ? "2px solid var(--color-accent)" : undefined,
           outlineOffset: 2,
         }}
       >
@@ -328,8 +328,8 @@ function EpisodeCard({
             position: "absolute",
             top: 5,
             left: 6,
-            background: "rgba(0,0,0,0.55)",
-            color: "rgba(255,255,255,0.85)",
+            background: "var(--color-overlay)",
+            color: "var(--color-text)",
             fontSize: 9,
             padding: "1px 5px",
             borderRadius: 3,
@@ -349,7 +349,7 @@ function EpisodeCard({
               width: 16,
               height: 16,
               borderRadius: "50%",
-              background: "#4a9e5c",
+              background: "var(--color-success)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -371,7 +371,7 @@ function EpisodeCard({
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          color: "rgba(232,228,223,0.7)",
+          color: "var(--color-text-secondary)",
         }}
         title={episode.title ?? undefined}
       >
@@ -382,7 +382,7 @@ function EpisodeCard({
       <div
         style={{
           fontSize: 11,
-          color: isResume ? "#c47e3a" : "rgba(232,228,223,0.33)",
+          color: isResume ? "var(--color-accent)" : "var(--color-text-muted)",
           marginTop: 2,
         }}
       >

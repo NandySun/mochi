@@ -98,7 +98,7 @@ function EpStripCard({
           backgroundImage: stillSrc ? `url(${stillSrc})` : thumbGrad,
           backgroundSize: "cover",
           backgroundPosition: "center",
-          outline: isResume ? "2px solid #c47e3a" : undefined,
+          outline: isResume ? "2px solid var(--color-accent)" : undefined,
           outlineOffset: 2,
           marginBottom: 7,
         }}
@@ -108,8 +108,8 @@ function EpStripCard({
             position: "absolute",
             top: 7,
             left: 8,
-            background: "rgba(0,0,0,0.55)",
-            color: "rgba(255,255,255,0.85)",
+            background: "var(--color-overlay)",
+            color: "var(--color-text)",
             fontSize: 10,
             padding: "1px 6px",
             borderRadius: 3,
@@ -127,7 +127,7 @@ function EpStripCard({
               width: 18,
               height: 18,
               borderRadius: "50%",
-              background: "#4a9e5c",
+              background: "var(--color-success)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -146,7 +146,7 @@ function EpStripCard({
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          color: "rgba(232,228,223,0.7)",
+          color: "var(--color-text-secondary)",
           lineHeight: 1.35,
         }}
         title={episode.title ?? undefined}
@@ -392,7 +392,7 @@ export default function SeriesDetail() {
     return (
       <div
         className="flex h-full items-center justify-center"
-        style={{ background: "#0e0e0e" }}
+        style={{ background: "var(--color-bg)" }}
       >
         <BreathingDot size={24} />
       </div>
@@ -413,7 +413,7 @@ export default function SeriesDetail() {
       {/* ── Return button ──────────────────────────────────────────── */}
       <motion.button
         onClick={handleBack}
-        whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+        whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
         whileTap={{ scale: 0.92 }}
         style={{
           position: "fixed",
@@ -423,10 +423,10 @@ export default function SeriesDetail() {
           width: 32,
           height: 32,
           borderRadius: "50%",
-          background: "rgba(255,255,255,0.08)",
+          background: "var(--color-surface)",
           border: "none",
           fontSize: 16,
-          color: "rgba(255,255,255,0.5)",
+          color: "var(--color-text-secondary)",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -458,7 +458,7 @@ export default function SeriesDetail() {
               height: r.posterH,
               borderRadius: 8,
               flexShrink: 0,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+              boxShadow: "0 8px 32px var(--color-overlay)",
               backgroundImage: posterSrc ? `url(${posterSrc})` : gradient,
               backgroundSize: "cover",
               backgroundPosition: "center",
@@ -480,7 +480,7 @@ export default function SeriesDetail() {
                   transform: "translate(-50%, -50%)",
                   fontSize: 52,
                   fontWeight: 700,
-                  color: "rgba(255,255,255,0.12)",
+                  color: "var(--color-surface)",
                 }}
               >
                 {initial}
@@ -491,14 +491,14 @@ export default function SeriesDetail() {
               style={{
                 position: "absolute",
                 inset: 0,
-                background: "rgba(0,0,0,0.4)",
+                background: "var(--color-overlay)",
                 opacity: 0,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <span style={{ fontSize: 36, color: "rgba(255,255,255,0.8)" }}>▶</span>
+              <span style={{ fontSize: 36, color: "var(--color-text)" }}>▶</span>
             </motion.div>
           </motion.div>
 
@@ -512,7 +512,7 @@ export default function SeriesDetail() {
               style={{
                 fontSize: r.titleSize,
                 fontWeight: 700,
-                color: "rgba(255,255,255,0.9)",
+                color: "var(--color-text)",
                 margin: "0 0 6px",
                 letterSpacing: 0.3,
                 lineHeight: 1.2,
@@ -528,12 +528,12 @@ export default function SeriesDetail() {
                 alignItems: "center",
                 gap: 10,
                 fontSize: r.infoSize,
-                color: "rgba(255,255,255,0.35)",
+                color: "var(--color-text-muted)",
                 marginBottom: 14,
               }}
             >
               {series.score != null && (
-                <span style={{ color: "#c47e3a", fontWeight: 600 }}>
+                <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
                   {(series.score / 10).toFixed(1)}
                 </span>
               )}
@@ -551,9 +551,9 @@ export default function SeriesDetail() {
                     style={{
                       padding: "3px 24px 3px 10px",
                       borderRadius: 4,
-                      background: typeOpen ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.06)",
-                      border: `1px solid ${typeOpen ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)"}`,
-                      color: "rgba(255,255,255,0.5)",
+                      background: typeOpen ? "var(--color-surface)" : "var(--color-surface-elevated)",
+                      border: `1px solid ${typeOpen ? "var(--color-surface-hover)" : "var(--color-surface)"}`,
+                      color: "var(--color-text-secondary)",
                       fontSize: 12,
                       cursor: "pointer",
                       outline: "none",
@@ -583,10 +583,10 @@ export default function SeriesDetail() {
                         position: "absolute",
                         top: "calc(100% + 4px)",
                         left: 0,
-                        background: "rgba(14,14,14,0.96)",
+                        background: "var(--color-modal-bg)",
                         backdropFilter: "blur(14px)",
                         borderRadius: 8,
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        border: "1px solid var(--color-surface)",
                         overflow: "hidden",
                         zIndex: 50,
                         minWidth: 100,
@@ -603,8 +603,8 @@ export default function SeriesDetail() {
                               width: "100%",
                               padding: "8px 16px 8px 22px",
                               textAlign: "left",
-                              background: isSelected ? "rgba(255,255,255,0.06)" : "transparent",
-                              color: isSelected ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)",
+                              background: isSelected ? "var(--color-surface-elevated)" : "transparent",
+                              color: isSelected ? "var(--color-text-secondary)" : "var(--color-text-muted)",
                               fontSize: 12,
                               cursor: "pointer",
                               border: "none",
@@ -612,7 +612,7 @@ export default function SeriesDetail() {
                               position: "relative",
                             }}
                             onMouseEnter={(e) => {
-                              if (!isSelected) (e.target as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+                              if (!isSelected) (e.target as HTMLElement).style.background = "var(--color-surface-elevated)";
                             }}
                             onMouseLeave={(e) => {
                               if (!isSelected) (e.target as HTMLElement).style.background = "transparent";
@@ -628,7 +628,7 @@ export default function SeriesDetail() {
                                   width: 4,
                                   height: 4,
                                   borderRadius: "50%",
-                                  background: "#c47e3a",
+                                  background: "var(--color-accent)",
                                 }}
                               />
                             )}
@@ -658,9 +658,9 @@ export default function SeriesDetail() {
                       fontSize: 11,
                       padding: "3px 8px",
                       borderRadius: 6,
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      background: "rgba(255,255,255,0.05)",
-                      color: "rgba(255,255,255,0.5)",
+                      border: "1px solid var(--color-surface)",
+                      background: "var(--color-surface-elevated)",
+                      color: "var(--color-text-secondary)",
                       outline: "none",
                       width: 120,
                     }}
@@ -672,8 +672,8 @@ export default function SeriesDetail() {
                       padding: "3px 10px",
                       borderRadius: 6,
                       border: "none",
-                      background: "rgba(196,126,58,0.15)",
-                      color: "rgba(196,126,58,0.8)",
+                      background: "var(--color-accent-dim)",
+                      color: "var(--color-accent)",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
                     }}
@@ -687,8 +687,8 @@ export default function SeriesDetail() {
                       padding: "3px 10px",
                       borderRadius: 6,
                       border: "none",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "rgba(255,255,255,0.35)",
+                      background: "var(--color-surface-elevated)",
+                      color: "var(--color-text-muted)",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
                     }}
@@ -706,7 +706,7 @@ export default function SeriesDetail() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.25 }}
-                    style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginBottom: 8 }}
+                    style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 8 }}
                   >
                     正在拉取元数据…
                   </motion.div>
@@ -723,7 +723,7 @@ export default function SeriesDetail() {
                     style={{
                       padding: "8px 18px",
                       borderRadius: 8,
-                      background: "#c47e3a",
+                      background: "var(--color-accent)",
                       color: "#fff",
                       fontSize: 13,
                       fontWeight: 600,
@@ -737,14 +737,14 @@ export default function SeriesDetail() {
                   {resumeEp.id !== firstEp?.id && (
                     <motion.button
                       onClick={() => firstEp && navigate(`/play/${firstEp.id}`)}
-                      whileHover={{ background: "rgba(255,255,255,0.1)" }}
+                      whileHover={{ background: "var(--color-surface)" }}
                       whileTap={{ scale: 0.96 }}
                       style={{
                         padding: "8px 18px",
                         borderRadius: 8,
-                        background: "rgba(255,255,255,0.06)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.75)",
+                        background: "var(--color-surface-elevated)",
+                        border: "1px solid var(--color-surface-elevated)",
+                        color: "var(--color-text-secondary)",
                         fontSize: 13,
                         cursor: "pointer",
                         fontFamily: "inherit",
@@ -757,12 +757,12 @@ export default function SeriesDetail() {
               ) : firstEp ? (
                 <motion.button
                   onClick={() => navigate(`/play/${firstEp.id}`)}
-                  whileHover={{ background: "rgba(255,255,255,0.2)" }}
+                  whileHover={{ background: "var(--color-text-muted)" }}
                   whileTap={{ scale: 0.96 }}
                   style={{
                     padding: "8px 18px",
                     borderRadius: 8,
-                    background: "#c47e3a",
+                    background: "var(--color-accent)",
                     color: "#fff",
                     fontSize: 13,
                     fontWeight: 600,
@@ -774,7 +774,7 @@ export default function SeriesDetail() {
                   ▶ 播放
                 </motion.button>
               ) : (
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>无可用剧集</span>
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>无可用剧集</span>
               )}
 
               {/* Genres */}
@@ -787,8 +787,8 @@ export default function SeriesDetail() {
                         fontSize: 11,
                         padding: "3px 10px",
                         borderRadius: 10,
-                        background: "rgba(255,255,255,0.08)",
-                        color: "rgba(255,255,255,0.5)",
+                        background: "var(--color-surface)",
+                        color: "var(--color-text-secondary)",
                       }}
                     >
                       {g}
@@ -800,7 +800,7 @@ export default function SeriesDetail() {
               {/* Synopsis — scrollable capped area */}
               {series.synopsis && (
                 <>
-                  <style>{`.synopsis-scroll::-webkit-scrollbar { width: 4px; } .synopsis-scroll::-webkit-scrollbar-track { background: transparent; } .synopsis-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; } .synopsis-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }`}</style>
+                  <style>{`.synopsis-scroll::-webkit-scrollbar { width: 4px; } .synopsis-scroll::-webkit-scrollbar-track { background: transparent; } .synopsis-scroll::-webkit-scrollbar-thumb { background: var(--color-surface); border-radius: 2px; } .synopsis-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-surface-hover); }`}</style>
                   <div
                     className="synopsis-scroll"
                     style={{
@@ -809,7 +809,7 @@ export default function SeriesDetail() {
                       maxHeight: 120,
                       overflowY: "auto",
                       scrollbarWidth: "thin" as const,
-                      scrollbarColor: "rgba(255,255,255,0.08) transparent",
+                      scrollbarColor: "var(--color-surface) transparent",
                     }}
                   >
                     <p
@@ -817,7 +817,7 @@ export default function SeriesDetail() {
                         margin: 0,
                         fontSize: 13.5,
                         lineHeight: 1.85,
-                        color: "rgba(232,228,223,0.45)",
+                        color: "var(--color-text-muted)",
                       }}
                     >
                       {series.synopsis}
@@ -834,7 +834,7 @@ export default function SeriesDetail() {
             <div
               style={{
                 fontSize: 11,
-                color: "rgba(232,228,223,0.33)",
+                color: "var(--color-text-muted)",
                 textTransform: "uppercase",
                 letterSpacing: 1.5,
                 marginBottom: 8,
@@ -861,7 +861,7 @@ export default function SeriesDetail() {
                 <span
                   style={{
                     fontSize: 11,
-                    color: "rgba(232,228,223,0.33)",
+                    color: "var(--color-text-muted)",
                     textTransform: "uppercase",
                     letterSpacing: 1.5,
                   }}
@@ -883,21 +883,21 @@ export default function SeriesDetail() {
                             borderRadius: 4,
                             border: "none",
                             cursor: "pointer",
-                            background: isActive ? "#c47e3a" : "rgba(255,255,255,0.06)",
-                            color: isActive ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.35)",
+                            background: isActive ? "var(--color-accent)" : "var(--color-surface-elevated)",
+                            color: isActive ? "var(--color-text)" : "var(--color-text-muted)",
                             transition: "all 0.2s",
                             fontFamily: "inherit",
                           }}
                           onMouseEnter={(e) => {
                             if (!isActive) {
-                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.1)";
-                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.55)";
+                              (e.target as HTMLElement).style.background = "var(--color-surface)";
+                              (e.target as HTMLElement).style.color = "var(--color-text-secondary)";
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (!isActive) {
-                              (e.target as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                              (e.target as HTMLElement).style.color = "rgba(255,255,255,0.35)";
+                              (e.target as HTMLElement).style.background = "var(--color-surface-elevated)";
+                              (e.target as HTMLElement).style.color = "var(--color-text-muted)";
                             }
                           }}
                         >
@@ -912,7 +912,7 @@ export default function SeriesDetail() {
                 onClick={() => setEpisodeModalOpen(true)}
                 style={{
                   fontSize: 14,
-                  color: "rgba(232,228,223,0.33)",
+                  color: "var(--color-text-muted)",
                   cursor: "pointer",
                   userSelect: "none",
                   padding: "2px 6px",
@@ -920,11 +920,11 @@ export default function SeriesDetail() {
                   transition: "all 0.2s",
                 }}
                 onMouseEnter={(e) => {
-                  (e.target as HTMLElement).style.color = "rgba(232,228,223,0.7)";
-                  (e.target as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                  (e.target as HTMLElement).style.color = "var(--color-text-secondary)";
+                  (e.target as HTMLElement).style.background = "var(--color-surface-elevated)";
                 }}
                 onMouseLeave={(e) => {
-                  (e.target as HTMLElement).style.color = "rgba(232,228,223,0.33)";
+                  (e.target as HTMLElement).style.color = "var(--color-text-muted)";
                   (e.target as HTMLElement).style.background = "transparent";
                 }}
                 title="查看全部剧集"
@@ -967,19 +967,19 @@ export default function SeriesDetail() {
       {/* ── Wrench FAB (bottom-right) ──────────────────────────────── */}
       <div ref={kebabRef} style={{ position: "fixed", bottom: 24, right: 24, zIndex: 60 }}>
         {(refreshingMeta || rescanning) ? (
-          <BreathingDot size={20} color="#c47e3a" style={{ cursor: "default" }} />
+          <BreathingDot size={20} color="var(--color-accent)" style={{ cursor: "default" }} />
         ) : (
           <motion.button
             onClick={() => setShowKebabMenu(!showKebabMenu)}
-            whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+            whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
             whileTap={{ scale: 0.92 }}
             style={{
               width: 40,
               height: 40,
               borderRadius: "50%",
-              background: showKebabMenu ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "rgba(255,255,255,0.4)",
+              background: showKebabMenu ? "var(--color-surface)" : "var(--color-surface-elevated)",
+              border: "1px solid var(--color-surface)",
+              color: "var(--color-text-muted)",
               fontSize: 16,
               cursor: "pointer",
               display: "flex",
@@ -1002,10 +1002,10 @@ export default function SeriesDetail() {
                 position: "absolute",
                 bottom: "calc(100% + 8px)",
                 right: 0,
-                background: "rgba(14,14,14,0.96)",
+                background: "var(--color-modal-bg)",
                 backdropFilter: "blur(14px)",
                 borderRadius: 8,
-                border: "1px solid rgba(255,255,255,0.08)",
+                border: "1px solid var(--color-surface)",
                 overflow: "hidden",
                 zIndex: 50,
                 minWidth: 150,
@@ -1044,7 +1044,7 @@ export default function SeriesDetail() {
                     padding: "10px 16px",
                     textAlign: "left",
                     background: "transparent",
-                    color: "rgba(255,255,255,0.5)",
+                    color: "var(--color-text-secondary)",
                     fontSize: 12,
                     cursor: "pointer",
                     border: "none",
@@ -1052,7 +1052,7 @@ export default function SeriesDetail() {
                     gap: 8,
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                    (e.currentTarget as HTMLElement).style.background = "var(--color-surface-elevated)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -1076,9 +1076,9 @@ export default function SeriesDetail() {
             zIndex: 65,
             padding: "6px 14px",
             borderRadius: 6,
-            background: "rgba(196,126,58,0.18)",
-            border: "1px solid rgba(196,126,58,0.3)",
-            color: "rgba(255,255,255,0.8)",
+            background: "var(--color-accent-dim)",
+            border: "1px solid var(--color-accent-dim)",
+            color: "var(--color-text)",
             fontSize: 12,
             pointerEvents: "none",
           }}

@@ -1,5 +1,66 @@
 @import "tailwindcss";
 
+/* ── Morandi Dark Palette ────────────────────────────────────────────
+ * 暖灰暗底 + 实色文字，源自莫兰迪灰调静物美学。
+ * 所有颜色带 20-30° 暖色相偏移，与琥珀 accent #c47e3a 同温。
+ * 文字用实色 hex 替代 rgba 半透明，保证可预测的对比度。
+ */
+:root {
+  /* 底色（暖灰黑，不是纯黑） */
+  --color-bg:               #151311;
+  --color-surface-elevated: #201d1a;
+  --color-surface:          #292522;
+  --color-surface-hover:    #332e2a;
+
+  /* 文字（实色 hex，暖调奶油白 → 暖灰褐） */
+  --color-text:             #e4ddd5;
+  --color-text-secondary:   #aea59c;
+  --color-text-muted:       #7e756b;
+
+  /* 强调色 */
+  --color-accent:           #c47e3a;
+  --color-accent-dim:       #2a2319;
+
+  /* 状态色 */
+  --color-success:          #5b8c5e;
+  --color-danger:           #b5625a;
+
+  /* 边框 / 分割线 */
+  --color-border:           #2a2622;
+  --color-border-light:     #1f1c19;
+
+  /* 遮罩 / 浮层 */
+  --color-overlay:          rgba(0,0,0,0.5);
+  --color-modal-bg:         #1c1916;
+
+  /* 组件专用 */
+  --color-kbd-bg:           #292522;
+  --color-kbd-border:       #332e2a;
+  --color-kbd-text:         #aea59c;
+  --color-titlebar-text:    #7e756b;
+  --color-titlebar-btn-hover: #292522;
+  --color-input-bg:         #201d1a;
+  --color-input-border:     #2a2622;
+  --color-scrollbar-thumb:  #332e2a;
+  --color-selection:        #2a2319;
+  --color-poster-shadow:    0 0 24px rgba(196,126,58,0.30), 0 6px 24px rgba(0,0,0,0.4);
+  --color-modal-shadow:     0 20px 56px rgba(0,0,0,0.55);
+  --color-hover-glow:       0 0 10px rgba(196,126,58,0.18);
+  --color-btn-close-hover:  #b5625a;
+  --color-toast-bg:         #1c1916;
+  --color-toast-border:     rgba(196,126,58,0.18);
+  --color-toast-text:       #e4ddd5;
+  --color-banner-bg:        #1c1916;
+  --color-banner-border:    rgba(91,140,94,0.18);
+  --color-banner-text:      #e4ddd5;
+  --color-filter-bg:        #201d1a;
+  --color-filter-active-bg: #2a2319;
+  --color-filter-active-text: #c47e3a;
+  --color-filter-text:      #7e756b;
+  --color-episode-bg:       #201d1a;
+  --color-verdict-bg:       #1c1916;
+}
+
 /* ── Base reset ── */
 html, body {
   margin: 0;
@@ -18,8 +79,8 @@ html, body {
 
 body {
   font-family: -apple-system, "Noto Serif SC", Georgia, serif;
-  background: #0a0a0a;
-  color: #e0e0e0;
+  background: var(--color-bg);
+  color: var(--color-text);
   user-select: none;
 }
 
@@ -31,11 +92,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: var(--color-scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: var(--color-text-muted);
 }
 
 /* Tabular-nums for time displays */

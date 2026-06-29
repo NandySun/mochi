@@ -46,7 +46,7 @@ function PosterCard({
         scale: isActive ? 1.12 : 1,
         opacity: isActive ? 1 : 0.5,
         boxShadow: isActive
-          ? "0 0 24px rgba(196,126,58,0.35), 0 8px 32px rgba(0,0,0,0.5)"
+          ? "0 0 24px var(--color-accent-dim), 0 8px 32px var(--color-overlay)"
           : "0 0 0px rgba(196,126,58,0)",
       }}
       transition={spring.poster}
@@ -73,7 +73,7 @@ function PosterCard({
             left: "50%",
             transform: "translate(-50%, -50%)",
             fontSize: "clamp(36px, 5.3vw, 72px)",
-            color: "rgba(255,255,255,0.15)",
+            color: "var(--color-surface)",
             letterSpacing: 2,
           }}
         >
@@ -151,7 +151,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
     setBg({
       gradient,
       fanartPath: selected.fanart_path,
-      maskGradient: "linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.7) 100%)",
+      maskGradient: "linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, var(--color-overlay) 60%, var(--color-overlay) 100%)",
     });
   }, [selected, setBg]);
 
@@ -338,7 +338,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          background: "#0e0e0e",
+          background: "var(--color-bg)",
           userSelect: "none",
         }}
       >
@@ -347,12 +347,12 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           <motion.button
             onClick={(e) => { e.stopPropagation(); onOpenSettings(); }}
             className="flex items-center justify-center cursor-pointer bg-transparent border-none"
-            whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+            whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
             whileTap={{ scale: 0.92 }}
             style={{
               width: 32, height: 32, borderRadius: "50%",
-              background: "rgba(255,255,255,0.08)",
-              fontSize: 16, color: "rgba(255,255,255,0.45)",
+              background: "var(--color-surface)",
+              fontSize: 16, color: "var(--color-text-muted)",
             }}
           >
             ⚙
@@ -363,16 +363,16 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           <BreathingDot size={24} />
           <motion.button
             onClick={onOpenSettings}
-            whileHover={{ color: "rgba(255,255,255,0.45)" }}
+            whileHover={{ color: "var(--color-text-muted)" }}
             whileTap={{ scale: 0.96 }}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              color: "rgba(255,255,255,0.2)", fontSize: 14,
+              color: "var(--color-text-muted)", fontSize: 14,
             }}
           >
             + 添加媒体文件夹
           </motion.button>
-          <span style={{ color: "rgba(255,255,255,0.12)", fontSize: 11 }}>
+          <span style={{ color: "var(--color-surface)", fontSize: 11 }}>
             或按 Ctrl+, 打开设置
           </span>
         </div>
@@ -426,7 +426,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                 }}
                 className="cursor-pointer bg-transparent border-none"
                 whileHover={{
-                  backgroundColor: isActive ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+                  backgroundColor: isActive ? "var(--color-surface)" : "var(--color-surface-elevated)",
                 }}
                 whileTap={{ scale: 0.95 }}
                 style={{
@@ -436,7 +436,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                   borderRadius: 10,
                   fontSize: 13,
                   background: "transparent",
-                  color: isActive ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.42)",
+                  color: isActive ? "var(--color-text)" : "var(--color-text-muted)",
                   border: "none",
                 }}
               >
@@ -446,7 +446,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background: "rgba(255,255,255,0.12)",
+                      background: "var(--color-surface)",
                       borderRadius: 10,
                       scaleX: jellyScaleX,
                       transformOrigin: `${jellyOriginX.current} 50%`,
@@ -466,13 +466,13 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
         <motion.button
           onClick={() => setShowSearch(true)}
           className="flex items-center justify-center cursor-pointer bg-transparent border-none"
-          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
           whileTap={{ scale: 0.92 }}
           style={{
             width: 32,
             height: 32,
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.08)",
+            background: "var(--color-surface)",
             marginRight: 8,
           }}
         >
@@ -481,7 +481,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
             height="15"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="rgba(255,255,255,0.45)"
+            stroke="var(--color-text-muted)"
             strokeWidth="2"
             strokeLinecap="round"
           >
@@ -494,15 +494,15 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
         <motion.button
           onClick={onOpenSettings}
           className="flex items-center justify-center cursor-pointer bg-transparent border-none"
-          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
           whileTap={{ scale: 0.92 }}
           style={{
             width: 32,
             height: 32,
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.08)",
+            background: "var(--color-surface)",
             fontSize: 16,
-            color: "rgba(255,255,255,0.45)",
+            color: "var(--color-text-muted)",
           }}
         >
           ⚙
@@ -535,7 +535,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           >
             <BreathingDot size={24} />
           </motion.div>
-          <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 14 }}>
+          <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
             {filter === "resume" ? "没有正在观看的剧集" : "换个标签试试？"}
           </span>
         </motion.div>
@@ -599,7 +599,7 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                     marginTop: "clamp(8px, 1.5vw, 24px)",
                     fontSize: "clamp(14px, 2vw, 28px)",
                     fontWeight: 500,
-                    color: "rgba(255,255,255,0.7)",
+                    color: "var(--color-text-secondary)",
                     userSelect: "none",
                   }}
                 >
@@ -681,8 +681,8 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
                                 width: isActive ? 6 : 4,
                                 height: isActive ? 6 : 4,
                                 backgroundColor: isActive
-                                  ? "rgba(255,255,255,0.4)"
-                                  : "rgba(255,255,255,0.1)",
+                                  ? "var(--color-text-muted)"
+                                  : "var(--color-border-light)",
                               }}
                               transition={spring.gentle}
                               style={{ borderRadius: "50%" }}
@@ -715,15 +715,15 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
         >
           <motion.button
             onClick={() => setShowVerdict(true)}
-            whileHover={{ backgroundColor: "rgba(196,126,58,0.15)" }}
+            whileHover={{ backgroundColor: "var(--color-accent-dim)" }}
             whileTap={{ scale: 0.97 }}
             style={{
               padding: "10px 24px",
               borderRadius: 24,
-              border: "1px solid rgba(196,126,58,0.25)",
-              background: "rgba(20,20,20,0.9)",
+              border: "1px solid var(--color-accent-dim)",
+              background: "var(--color-modal-bg)",
               backdropFilter: "blur(12px)",
-              color: "#c47e3a",
+              color: "var(--color-accent)",
               fontSize: 13,
               fontWeight: 500,
               cursor: "pointer",

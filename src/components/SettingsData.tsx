@@ -266,7 +266,7 @@ export default function SettingsData() {
       {/* ── Divider ──────────────────────────────────────────────── */}
       <div
         style={{
-          borderTop: "1px solid rgba(255,255,255,0.06)",
+          borderTop: "1px solid var(--color-surface-elevated)",
           margin: "20px 0 24px",
         }}
       />
@@ -318,7 +318,7 @@ export default function SettingsData() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "rgba(0,0,0,0.5)",
+              background: "var(--color-overlay)",
               backdropFilter: "blur(4px)",
             }}
           >
@@ -329,12 +329,12 @@ export default function SettingsData() {
               transition={spring.gentle}
               onClick={(e) => e.stopPropagation()}
               style={{
-                background: "rgba(14,14,14,0.96)",
+                background: "var(--color-modal-bg)",
                 backdropFilter: "blur(12px)",
                 border:
                   confirm.cardId === "factory"
                     ? "1px solid rgba(196,74,58,0.3)"
-                    : "1px solid rgba(255,255,255,0.08)",
+                    : "1px solid var(--color-surface)",
                 borderRadius: 12,
                 padding: "24px 28px",
                 minWidth: 340,
@@ -345,7 +345,7 @@ export default function SettingsData() {
                 style={{
                   margin: "0 0 20px",
                   fontSize: 14,
-                  color: "rgba(255,255,255,0.75)",
+                  color: "var(--color-text-secondary)",
                   lineHeight: 1.6,
                 }}
               >
@@ -389,11 +389,11 @@ export default function SettingsData() {
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const cardStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.06)",
+  border: "1px solid var(--color-surface-elevated)",
   borderRadius: 10,
   padding: "14px 18px",
   marginBottom: 10,
-  background: "rgba(255,255,255,0.02)",
+  background: "var(--color-surface-elevated)",
 };
 
 const cardRow: React.CSSProperties = {
@@ -405,26 +405,26 @@ const cardRow: React.CSSProperties = {
 const cardTitle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 500,
-  color: "rgba(255,255,255,0.7)",
+  color: "var(--color-text-secondary)",
 };
 
 const cardDesc: React.CSSProperties = {
   fontSize: 12,
-  color: "rgba(255,255,255,0.3)",
+  color: "var(--color-text-muted)",
   margin: "4px 0 0",
   lineHeight: 1.5,
 };
 
 const cardMeta: React.CSSProperties = {
   fontSize: 11,
-  color: "rgba(255,255,255,0.2)",
+  color: "var(--color-text-muted)",
   marginTop: 6,
   display: "inline-block",
 };
 
 const cardNote: React.CSSProperties = {
   fontSize: 11,
-  color: "rgba(255,255,255,0.15)",
+  color: "var(--color-surface-hover)",
   margin: "10px 0 0",
   lineHeight: 1.5,
 };
@@ -434,9 +434,9 @@ function btnStyle(
 ): React.CSSProperties {
   const colors: Record<typeof variant, { border: string; bg: string; color: string }> = {
     default: {
-      border: "1px solid rgba(255,255,255,0.08)",
-      bg: "rgba(255,255,255,0.06)",
-      color: "rgba(255,255,255,0.45)",
+      border: "1px solid var(--color-surface)",
+      bg: "var(--color-surface-elevated)",
+      color: "var(--color-text-muted)",
     },
     warn: {
       border: "1px solid rgba(196,140,58,0.3)",
@@ -476,16 +476,16 @@ function modalBtn(
     case "cancel":
       return {
         ...base,
-        border: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.06)",
-        color: "rgba(255,255,255,0.45)",
+        border: "1px solid var(--color-surface)",
+        background: "var(--color-surface-elevated)",
+        color: "var(--color-text-muted)",
       };
     case "confirm":
       return {
         ...base,
-        border: "1px solid rgba(196,126,58,0.4)",
-        background: "rgba(196,126,58,0.12)",
-        color: "#c47e3a",
+        border: "1px solid var(--color-accent-dim)",
+        background: "var(--color-accent-dim)",
+        color: "var(--color-accent)",
       };
     case "danger":
       return {

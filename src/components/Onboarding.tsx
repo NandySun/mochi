@@ -73,7 +73,7 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0,0,0,0.85)",
+        background: "var(--color-overlay)",
         backdropFilter: "blur(16px)",
         userSelect: "none",
         gap: 16,
@@ -90,7 +90,7 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         style={{
           fontSize: 24,
           fontWeight: 500,
-          color: "rgba(255,255,255,0.7)",
+          color: "var(--color-text-secondary)",
           margin: 0,
         }}
       >
@@ -103,7 +103,7 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         transition={{ ...spring.gentle, delay: 0.35 }}
         style={{
           fontSize: 13,
-          color: "rgba(255,255,255,0.3)",
+          color: "var(--color-text-muted)",
           margin: 0,
           textAlign: "center",
           lineHeight: 1.6,
@@ -119,7 +119,7 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...spring.gentle, delay: 0.5 }}
-        whileHover={{ backgroundColor: "rgba(196,126,58,0.08)" }}
+        whileHover={{ backgroundColor: "var(--color-accent-dim)" }}
         whileTap={{ scale: 0.98 }}
         onClick={handleCreateStructure}
         style={{
@@ -129,17 +129,17 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
           gap: 6,
           padding: "16px 28px",
           borderRadius: 12,
-          border: "1px solid rgba(196,126,58,0.15)",
-          background: "rgba(20,20,20,0.85)",
+          border: "1px solid var(--color-accent-dim)",
+          background: "var(--color-modal-bg)",
           cursor: "pointer",
           maxWidth: 360,
           width: "80%",
         }}
       >
-        <span style={{ fontSize: 14, color: "rgba(255,255,255,0.7)" }}>
+        <span style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
           创建推荐文件夹结构
         </span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
+        <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
           将创建 anime/ movie/ tv/ variety/ 四个子文件夹
         </span>
       </motion.button>
@@ -149,17 +149,17 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...spring.gentle, delay: 0.57 }}
-        whileHover={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        whileHover={{ backgroundColor: "var(--color-surface-elevated)" }}
         whileTap={{ scale: 0.98 }}
         onClick={handleSelectExisting}
         style={{
           padding: "14px 28px",
           borderRadius: 12,
           border: "1px solid rgba(196,180,140,0.12)",
-          background: "rgba(20,20,20,0.85)",
+          background: "var(--color-modal-bg)",
           cursor: "pointer",
           fontSize: 14,
-          color: "rgba(255,255,255,0.55)",
+          color: "var(--color-text-secondary)",
           maxWidth: 360,
           width: "80%",
         }}
@@ -172,17 +172,17 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...spring.gentle, delay: 0.64 }}
-        whileHover={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        whileHover={{ backgroundColor: "var(--color-surface-elevated)" }}
         whileTap={{ scale: 0.98 }}
         onClick={handleGoToSettings}
         style={{
           padding: "14px 28px",
           borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.06)",
-          background: "rgba(20,20,20,0.85)",
+          border: "1px solid var(--color-surface-elevated)",
+          background: "var(--color-modal-bg)",
           cursor: "pointer",
           fontSize: 14,
-          color: "rgba(255,255,255,0.5)",
+          color: "var(--color-text-secondary)",
           maxWidth: 360,
           width: "80%",
         }}
@@ -195,7 +195,7 @@ export default function Onboarding({ onComplete, onOpenSettings }: OnboardingPro
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ ...spring.gentle, delay: 0.8 }}
-        style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", cursor: "pointer" }}
+        style={{ fontSize: 11, color: "var(--color-surface-hover)", cursor: "pointer" }}
         onClick={handleGoToSettings}
       >
         或按 Ctrl+, 稍后设置

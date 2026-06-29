@@ -351,16 +351,16 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   // ── Loading / Error ────────────────────────────────────────────────────
   if (!episode || loading) {
     return (
-      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#0e0e0e" }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-bg)" }}>
         <BreathingDot size={24} />
       </div>
     );
   }
   if (errorMsg) {
     return (
-      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0e0e0e", gap: 12 }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--color-bg)", gap: 12 }}>
         <span style={{ color: "#f87171", fontSize: 13 }}>{errorMsg}</span>
-        <button onClick={handleBack} style={{ color: "rgba(255,255,255,0.35)", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}>← 返回</button>
+        <button onClick={handleBack} style={{ color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}>← 返回</button>
       </div>
     );
   }
@@ -387,24 +387,24 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
         <motion.button
           onClick={handleBack}
           className="flex items-center justify-center cursor-pointer bg-transparent border-none"
-          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
           whileTap={{ scale: 0.92 }}
           style={{
             width: 32, height: 32, borderRadius: "50%",
-            background: "rgba(255,255,255,0.08)", fontSize: 16, color: "rgba(255,255,255,0.5)",
+            background: "var(--color-surface)", fontSize: 16, color: "var(--color-text-secondary)",
           }}
         >
           ←
         </motion.button>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{episodeLabel}</div>
+        <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{episodeLabel}</div>
         <motion.button
           onClick={toggleFullscreen}
           className="flex items-center justify-center cursor-pointer bg-transparent border-none"
-          whileHover={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+          whileHover={{ backgroundColor: "var(--color-surface-hover)" }}
           whileTap={{ scale: 0.92 }}
           style={{
             width: 28, height: 28, borderRadius: 6,
-            background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.45)",
+            background: "var(--color-surface)", color: "var(--color-text-muted)",
           }}
         >
           {isFullscreen ? (

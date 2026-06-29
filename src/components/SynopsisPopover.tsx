@@ -82,7 +82,7 @@ export default function SynopsisPopover({
               position: "fixed",
               inset: 0,
               zIndex: 90,
-              background: "rgba(0,0,0,0.4)",
+              background: "var(--color-overlay)",
             }}
           />
 
@@ -101,9 +101,9 @@ export default function SynopsisPopover({
               width: 380,
               maxHeight: 260,
               background: "#1c1916",
-              border: "1px solid rgba(255,255,255,0.1)",
+              border: "1px solid var(--color-surface)",
               borderRadius: 10,
-              boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+              boxShadow: "0 16px 48px var(--color-overlay)",
               overflowY: "auto",
               scrollbarWidth: "none",
               padding: 16,
@@ -117,7 +117,7 @@ export default function SynopsisPopover({
                 margin: "0 0 12px",
                 fontSize: 13.5,
                 lineHeight: 1.7,
-                color: "rgba(232,228,223,0.55)",
+                color: "var(--color-text-secondary)",
               }}
             >
               {synopsis}
@@ -132,9 +132,9 @@ export default function SynopsisPopover({
                     style={{
                       fontSize: 11,
                       padding: "2px 8px",
-                      border: "1px solid rgba(255,255,255,0.06)",
+                      border: "1px solid var(--color-surface-elevated)",
                       borderRadius: 10,
-                      color: "rgba(232,228,223,0.45)",
+                      color: "var(--color-text-muted)",
                     }}
                   >
                     {tag}

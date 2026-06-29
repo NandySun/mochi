@@ -21,7 +21,7 @@ export default function TitleBar() {
       <span
         style={{
           fontSize: 12,
-          color: "rgba(255,255,255,0.35)",
+          color: "var(--color-text-muted)",
           letterSpacing: 2,
           fontWeight: 500,
         }}
@@ -61,20 +61,20 @@ function WinBtn({
         background: "transparent",
         border: "none",
         fontSize: 12,
-        color: "rgba(255,255,255,0.3)",
+        color: "var(--color-text-muted)",
         cursor: "pointer",
       }}
       onMouseEnter={(e) => {
         if (isClose) {
-          e.currentTarget.style.background = "#e81123";
+          e.currentTarget.style.background = "var(--color-btn-close-hover)";
           e.currentTarget.style.color = "#fff";
         } else {
-          e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+          e.currentTarget.style.background = "var(--color-surface-hover)";
         }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = "rgba(255,255,255,0.3)";
+        e.currentTarget.style.color = "var(--color-text-muted)";
       }}
     >
       {symbol}

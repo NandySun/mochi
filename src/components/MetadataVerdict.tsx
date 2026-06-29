@@ -299,7 +299,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
         position: "fixed",
         inset: 0,
         zIndex: 100,
-        background: "rgba(0,0,0,0.75)",
+        background: "var(--color-overlay)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -315,9 +315,9 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
         style={{
           width: "min(720px, 80vw)",
           maxHeight: "80vh",
-          background: "rgba(24,24,24,0.95)",
+          background: "var(--color-modal-bg)",
           borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--color-surface)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
@@ -327,17 +327,17 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
         <div
           style={{
             padding: "20px 24px 12px",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            borderBottom: "1px solid var(--color-surface-elevated)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
           }}
         >
           <div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text)" }}>
               匹配元数据
             </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 4 }}>
               {totalUnresolved > 0
                 ? `${totalUnresolved} 个系列待确认 · ${currentIndex + 1}/${cards.length}`
                 : "全部已处理"}
@@ -348,9 +348,9 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
               onClick={handleSkipAll}
               style={{
                 fontSize: 12,
-                color: "rgba(255,255,255,0.35)",
+                color: "var(--color-text-muted)",
                 background: "transparent",
-                border: "1px solid rgba(255,255,255,0.1)",
+                border: "1px solid var(--color-surface)",
                 borderRadius: 8,
                 padding: "6px 14px",
                 cursor: "pointer",
@@ -362,9 +362,9 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
               onClick={handleConfirmAll}
               style={{
                 fontSize: 12,
-                color: "#c47e3a",
+                color: "var(--color-accent)",
                 background: "transparent",
-                border: "1px solid rgba(196,126,58,0.3)",
+                border: "1px solid var(--color-accent-dim)",
                 borderRadius: 8,
                 padding: "6px 14px",
                 cursor: "pointer",
@@ -384,7 +384,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                 alignItems: "center",
                 justifyContent: "center",
                 height: "100%",
-                color: "rgba(255,255,255,0.2)",
+                color: "var(--color-text-muted)",
                 fontSize: 14,
               }}
             >
@@ -402,10 +402,10 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
               >
                 {/* Series info */}
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.75)", marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 4 }}>
                     {current.series.display_name}
                   </div>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
+                  <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
                     {current.series.episodes.length} 个文件 · 文件夹: {current.series.folder_name}
                   </div>
                 </div>
@@ -419,7 +419,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                       justifyContent: "center",
                       gap: 12,
                       padding: "60px 0",
-                      color: "rgba(255,255,255,0.2)",
+                      color: "var(--color-text-muted)",
                       fontSize: 14,
                     }}
                   >
@@ -454,7 +454,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                       alignItems: "center",
                       justifyContent: "center",
                       height: 120,
-                      color: current.status === "resolved" ? "rgba(90,170,150,0.6)" : "rgba(255,255,255,0.2)",
+                      color: current.status === "resolved" ? "rgba(90,170,150,0.6)" : "var(--color-text-muted)",
                       fontSize: 14,
                     }}
                   >
@@ -470,7 +470,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      borderTop: "1px solid rgba(255,255,255,0.06)",
+                      borderTop: "1px solid var(--color-surface-elevated)",
                       paddingTop: 16,
                     }}
                   >
@@ -478,7 +478,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                       onClick={handleSkip}
                       style={{
                         fontSize: 12,
-                        color: "rgba(255,255,255,0.35)",
+                        color: "var(--color-text-muted)",
                         background: "transparent",
                         border: "none",
                         cursor: "pointer",
@@ -492,7 +492,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                       onClick={() => setShowManualSearch(!showManualSearch)}
                       style={{
                         fontSize: 12,
-                        color: "rgba(255,255,255,0.3)",
+                        color: "var(--color-text-muted)",
                         background: "transparent",
                         border: "none",
                         cursor: "pointer",
@@ -523,9 +523,9 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                         flex: 1,
                         padding: "8px 14px",
                         borderRadius: 8,
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: "rgba(255,255,255,0.04)",
-                        color: "rgba(255,255,255,0.7)",
+                        border: "1px solid var(--color-surface)",
+                        background: "var(--color-surface-elevated)",
+                        color: "var(--color-text-secondary)",
                         fontSize: 13,
                         outline: "none",
                       }}
@@ -535,9 +535,9 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                       style={{
                         padding: "8px 16px",
                         borderRadius: 8,
-                        border: "1px solid rgba(196,126,58,0.3)",
+                        border: "1px solid var(--color-accent-dim)",
                         background: "transparent",
-                        color: "#c47e3a",
+                        color: "var(--color-accent)",
                         fontSize: 13,
                         cursor: "pointer",
                       }}
@@ -555,7 +555,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
         <div
           style={{
             padding: "12px 24px 16px",
-            borderTop: "1px solid rgba(255,255,255,0.06)",
+            borderTop: "1px solid var(--color-surface-elevated)",
             display: "flex",
             justifyContent: "center",
             gap: 6,
@@ -574,12 +574,12 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
                 padding: 0,
                 background:
                   i === currentIndex
-                    ? "rgba(255,255,255,0.4)"
+                    ? "var(--color-text-muted)"
                     : card.status === "resolved"
                     ? "rgba(90,170,150,0.4)"
                     : card.status === "skipped"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(255,255,255,0.1)",
+                    ? "var(--color-surface)"
+                    : "var(--color-surface)",
                 transition: "background 0.2s",
               }}
             />
@@ -608,7 +608,7 @@ function ResultColumn({
           fontSize: 11,
           textTransform: "uppercase",
           letterSpacing: 1,
-          color: "rgba(255,255,255,0.2)",
+          color: "var(--color-text-muted)",
           marginBottom: 10,
         }}
       >
@@ -618,7 +618,7 @@ function ResultColumn({
         <div
           style={{
             fontSize: 13,
-            color: "rgba(255,255,255,0.15)",
+            color: "var(--color-surface-hover)",
             padding: "20px 0",
             textAlign: "center",
           }}
@@ -659,7 +659,7 @@ function ResultCard({
 
   return (
     <motion.button
-      whileHover={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      whileHover={{ backgroundColor: "var(--color-surface-elevated)" }}
       whileTap={{ scale: 0.98 }}
       onClick={onSelect}
       style={{
@@ -667,8 +667,8 @@ function ResultCard({
         gap: 10,
         padding: 10,
         borderRadius: 10,
-        border: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(255,255,255,0.02)",
+        border: "1px solid var(--color-surface-elevated)",
+        background: "var(--color-surface-elevated)",
         cursor: "pointer",
         textAlign: "left",
         color: "inherit",
@@ -681,7 +681,7 @@ function ResultCard({
           height: 68,
           borderRadius: 6,
           flexShrink: 0,
-          background: "rgba(255,255,255,0.05)",
+          background: "var(--color-surface-elevated)",
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -689,7 +689,7 @@ function ResultCard({
           style={{
             fontSize: 13,
             fontWeight: 500,
-            color: "rgba(255,255,255,0.7)",
+            color: "var(--color-text-secondary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -698,7 +698,7 @@ function ResultCard({
         >
           {title}
         </div>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
           {[year, score ? `★${score}` : null].filter(Boolean).join(" · ")}
         </div>
       </div>

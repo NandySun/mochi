@@ -121,7 +121,7 @@ export default function SearchOverlay({ series, onClose }: Props) {
           position: "fixed",
           inset: 0,
           zIndex: 200,
-          background: "rgba(0,0,0,0.45)",
+          background: "var(--color-overlay)",
           backdropFilter: "blur(6px)",
         }}
       />
@@ -145,10 +145,10 @@ export default function SearchOverlay({ series, onClose }: Props) {
           transition={spring.gentle}
           onClick={(e) => e.stopPropagation()}
           style={{
-            background: "rgba(20,20,20,0.94)",
+            background: "var(--color-modal-bg)",
             backdropFilter: "blur(20px)",
             borderRadius: 16,
-            border: "1px solid rgba(255,255,255,0.07)",
+            border: "1px solid var(--color-border-light)",
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
@@ -164,8 +164,8 @@ export default function SearchOverlay({ series, onClose }: Props) {
                 padding: "0 14px",
                 height: 44,
                 borderRadius: 12,
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                background: "var(--color-surface-elevated)",
+                border: "1px solid var(--color-surface-elevated)",
               }}
             >
               <svg
@@ -173,7 +173,7 @@ export default function SearchOverlay({ series, onClose }: Props) {
                 height="15"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="rgba(255,255,255,0.25)"
+                stroke="var(--color-text-muted)"
                 strokeWidth="2"
                 strokeLinecap="round"
               >
@@ -192,7 +192,7 @@ export default function SearchOverlay({ series, onClose }: Props) {
                   background: "transparent",
                   border: "none",
                   outline: "none",
-                  color: "rgba(255,255,255,0.85)",
+                  color: "var(--color-text)",
                   fontSize: 15,
                   fontFamily: "inherit",
                 }}
@@ -203,7 +203,7 @@ export default function SearchOverlay({ series, onClose }: Props) {
                   style={{
                     background: "none",
                     border: "none",
-                    color: "rgba(255,255,255,0.25)",
+                    color: "var(--color-text-muted)",
                     cursor: "pointer",
                     fontSize: 14,
                     padding: 0,
@@ -230,7 +230,7 @@ export default function SearchOverlay({ series, onClose }: Props) {
                   style={{
                     textAlign: "center",
                     padding: "28px 16px 22px",
-                    color: "rgba(255,255,255,0.18)",
+                    color: "var(--color-text-muted)",
                     fontSize: 14,
                     userSelect: "none",
                   }}
@@ -260,9 +260,9 @@ export default function SearchOverlay({ series, onClose }: Props) {
               display: "flex",
               gap: 16,
               padding: "7px 16px",
-              borderTop: "1px solid rgba(255,255,255,0.04)",
+              borderTop: "1px solid var(--color-surface-elevated)",
               fontSize: 11,
-              color: "rgba(255,255,255,0.18)",
+              color: "var(--color-text-muted)",
               userSelect: "none",
             }}
           >
@@ -301,7 +301,7 @@ function ResultRow({
     <motion.button
       onClick={onClick}
       onMouseEnter={onHover}
-      whileHover={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      whileHover={{ backgroundColor: "var(--color-surface-elevated)" }}
       whileTap={{ scale: 0.985 }}
       style={{
         display: "flex",
@@ -310,7 +310,7 @@ function ResultRow({
         width: "100%",
         padding: "7px 10px",
         borderRadius: 10,
-        background: isActive ? "rgba(255,255,255,0.08)" : "transparent",
+        background: isActive ? "var(--color-surface)" : "transparent",
         border: "none",
         cursor: "pointer",
         textAlign: "left",
@@ -340,7 +340,7 @@ function ResultRow({
               justifyContent: "center",
               fontSize: 16,
               fontWeight: 700,
-              color: "rgba(255,255,255,0.12)",
+              color: "var(--color-surface)",
               userSelect: "none",
             }}
           >
@@ -355,7 +355,7 @@ function ResultRow({
           style={{
             fontSize: 14,
             fontWeight: 500,
-            color: "rgba(255,255,255,0.85)",
+            color: "var(--color-text)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -367,8 +367,8 @@ function ResultRow({
           <span
             style={{
               fontSize: 11,
-              color: "rgba(255,255,255,0.3)",
-              background: "rgba(255,255,255,0.06)",
+              color: "var(--color-text-muted)",
+              background: "var(--color-surface-elevated)",
               padding: "1px 6px",
               borderRadius: 4,
               lineHeight: "16px",
@@ -380,7 +380,7 @@ function ResultRow({
             <span
               style={{
                 fontSize: 11,
-                color: "rgba(255,255,255,0.22)",
+                color: "var(--color-text-muted)",
                 lineHeight: "16px",
               }}
             >

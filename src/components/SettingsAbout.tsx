@@ -19,17 +19,17 @@ export default function SettingsAbout() {
 
       {/* ── App name + version ──────────────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
-        <p style={{ fontSize: 20, fontWeight: 600, color: "rgba(255,255,255,0.85)", margin: 0 }}>
-          Mochi <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>v{version}</span>
+        <p style={{ fontSize: 20, fontWeight: 600, color: "var(--color-text)", margin: 0 }}>
+          Mochi <span style={{ fontSize: 14, fontWeight: 400, color: "var(--color-text-muted)" }}>v{version}</span>
         </p>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: "4px 0 0" }}>
+        <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "4px 0 0" }}>
           桌面原生个人多媒体库
         </p>
       </div>
 
       {/* ── Tech stack ──────────────────────────────────────────────── */}
       <label style={label}>技术栈</label>
-      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: "0 0 20px", lineHeight: 1.8 }}>
+      <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 20px", lineHeight: 1.8 }}>
         Tauri v2 · React 19 · libmpv · SQLite · Bangumi · TMDB
       </p>
 
@@ -40,7 +40,7 @@ export default function SettingsAbout() {
           href={GITHUB_URL}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ fontSize: 13, color: "#c47e3a", textDecoration: "none" }}
+          style={{ fontSize: 13, color: "var(--color-accent)", textDecoration: "none" }}
         >
           {GITHUB_URL}
         </a>
@@ -55,25 +55,25 @@ export default function SettingsAbout() {
       </button>
 
       {/* ── Credits ─────────────────────────────────────────────────── */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 20, marginTop: 24 }}>
+      <div style={{ borderTop: "1px solid var(--color-surface-elevated)", paddingTop: 20, marginTop: 24 }}>
         <label style={label}>致谢</label>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: "0 0 12px", lineHeight: 1.7 }}>
+        <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px", lineHeight: 1.7 }}>
           mpv · Tauri · Bangumi · TMDB
         </p>
       </div>
 
       {/* ── Copyright ───────────────────────────────────────────────── */}
-      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", margin: "0 0 8px" }}>
+      <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "0 0 8px" }}>
         © 2025-2026 Revm
       </p>
 
       {/* ── License ─────────────────────────────────────────────────── */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 16, marginTop: 12 }}>
+      <div style={{ borderTop: "1px solid var(--color-surface-elevated)", paddingTop: 16, marginTop: 12 }}>
         <label style={label}>许可证</label>
-        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", margin: "0 0 6px" }}>
+        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "0 0 6px" }}>
           Mochi 采用 MIT 许可证发布。
         </p>
-        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0, lineHeight: 1.6 }}>
           内置 libmpv 为 LGPLv2.1+ 许可，详见 mpv 官方文档。
         </p>
       </div>

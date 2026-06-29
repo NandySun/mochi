@@ -53,7 +53,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         transition={{ duration: 0.15 }}
         style={{
           position: "fixed", inset: 0, zIndex: 100,
-          background: "rgba(0,0,0,0.6)",
+          background: "var(--color-overlay)",
         }}
       />
       {/* Card — wrapper handles centering, motion.div handles slide */}
@@ -70,7 +70,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           transition={spring.settings}
           style={{
             width: 720, maxHeight: "80vh",
-            background: "rgba(14,14,14,0.95)", backdropFilter: "blur(16px)",
+            background: "var(--color-modal-bg)", backdropFilter: "blur(16px)",
             borderRadius: 14, overflow: "hidden",
             display: "flex",
           }}
@@ -79,8 +79,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} style={{
           position: "absolute", top: 16, right: 16, zIndex: 102,
           width: 28, height: 28, borderRadius: "50%",
-          background: "rgba(255,255,255,0.08)", border: "none",
-          cursor: "pointer", color: "rgba(255,255,255,0.5)", fontSize: 14,
+          background: "var(--color-surface)", border: "none",
+          cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 14,
         }}>✕</button>
 
         {/* ── Sidebar ──────────────────────────────────────────────── */}
@@ -91,7 +91,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           display: "flex",
           flexDirection: "column",
           gap: 2,
-          borderRight: "1px solid rgba(255,255,255,0.06)",
+          borderRight: "1px solid var(--color-surface-elevated)",
         }}>
           {SECTIONS.map((sec) => {
             const isActive = active === sec.id;
@@ -106,11 +106,11 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                   padding: "9px 14px 9px 16px",
                   border: "none",
                   borderRadius: 0,
-                  background: isActive ? "rgba(255,255,255,0.04)" : "transparent",
+                  background: isActive ? "var(--color-surface-elevated)" : "transparent",
                   cursor: "pointer",
                   fontSize: 13,
                   fontWeight: isActive ? 500 : 400,
-                  color: isActive ? "#c47e3a" : "rgba(255,255,255,0.4)",
+                  color: isActive ? "var(--color-accent)" : "var(--color-text-muted)",
                   textAlign: "left" as const,
                   width: "100%",
                 }}
@@ -126,7 +126,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                       bottom: 6,
                       width: 3,
                       borderRadius: 2,
-                      background: "#c47e3a",
+                      background: "var(--color-accent)",
                     }}
                     transition={{ type: "spring", stiffness: 500, damping: 35 }}
                   />

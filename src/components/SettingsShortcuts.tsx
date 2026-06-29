@@ -73,8 +73,8 @@ export default function SettingsShortcuts() {
             style={{
               padding: "12px 16px",
               borderRadius: 10,
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              background: "var(--color-surface-elevated)",
+              border: "1px solid var(--color-surface-elevated)",
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -84,7 +84,7 @@ export default function SettingsShortcuts() {
                   style={{ display: "flex", alignItems: "center", gap: 14 }}
                 >
                   <kbd style={kbdStyle}>{entry.keys}</kbd>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                  <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
                     {entry.action}
                   </span>
                 </div>

@@ -91,7 +91,7 @@ export default function SettingsMetadata() {
       {batchStatus ? (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
           <BreathingDot size={24} />
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
             {batchStatus}
           </span>
         </div>
@@ -109,13 +109,13 @@ export default function SettingsMetadata() {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "10px 14px",
-  border: "1px solid rgba(255,255,255,0.1)",
+  border: "1px solid var(--color-surface)",
   borderRadius: 8,
   fontSize: 13,
   outline: "none",
   boxSizing: "border-box",
-  background: "rgba(255,255,255,0.05)",
-  color: "rgba(255,255,255,0.7)",
+  background: "var(--color-surface-elevated)",
+  color: "var(--color-text-secondary)",
 };
 
 const eyeBtn: React.CSSProperties = {

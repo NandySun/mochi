@@ -14,7 +14,7 @@ export default function DropOverlay() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0,0,0,0.35)",
+        background: "var(--color-overlay)",
         backdropFilter: "blur(2px)",
         pointerEvents: "none",
       }}
@@ -26,15 +26,15 @@ export default function DropOverlay() {
         style={{
           padding: "32px 48px",
           borderRadius: 12,
-          border: "2px dashed rgba(196,126,58,0.3)",
-          background: "rgba(14,14,14,0.9)",
+          border: "2px dashed var(--color-accent-dim)",
+          background: "var(--color-modal-bg)",
           userSelect: "none",
         }}
       >
         <span
           style={{
             fontSize: 14,
-            color: "rgba(255,255,255,0.4)",
+            color: "var(--color-text-muted)",
           }}
         >
           拖放文件夹到此处添加至 Mochi

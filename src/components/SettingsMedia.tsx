@@ -286,8 +286,8 @@ export default function SettingsMedia() {
               padding: "2px 8px",
               borderRadius: 4,
               border: "none",
-              background: "rgba(255,255,255,0.06)",
-              color: dir.type === "auto" ? "rgba(255,255,255,0.25)" : "rgba(255,180,120,0.6)",
+              background: "var(--color-surface-elevated)",
+              color: dir.type === "auto" ? "var(--color-text-muted)" : "rgba(255,180,120,0.6)",
               whiteSpace: "nowrap",
               flexShrink: 0,
               cursor: "pointer",
@@ -297,8 +297,8 @@ export default function SettingsMedia() {
           </button>
           <button
             style={deleteBtn}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#e81123")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.3)")}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-btn-close-hover)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-muted)")}
             onClick={() => removeDir(i)}
           >
             ✕
@@ -338,8 +338,8 @@ export default function SettingsMedia() {
                   border: "none",
                   fontSize: 11,
                   cursor: "pointer",
-                  background: addType === t.key ? "rgba(196,126,58,0.2)" : "rgba(255,255,255,0.05)",
-                  color: addType === t.key ? "#c47e3a" : "rgba(255,255,255,0.3)",
+                  background: addType === t.key ? "var(--color-accent-dim)" : "var(--color-surface-elevated)",
+                  color: addType === t.key ? "var(--color-accent)" : "var(--color-text-muted)",
                 }}
               >
                 {t.label}
@@ -359,11 +359,11 @@ export default function SettingsMedia() {
         {scanning && (
           <>
             <BreathingDot size={16} />
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 11, color: "var(--color-text-muted)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {scanPath ?? ""}
             </span>
             {scanCount > 0 && (
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>
+              <span style={{ fontSize: 11, color: "var(--color-surface-hover)" }}>
                 {scanCount} 个系列
               </span>
             )}
@@ -372,7 +372,7 @@ export default function SettingsMedia() {
       </div>
 
       {/* ── 元数据源 ───────────────────────────────────────── */}
-      <div style={{ marginTop: 28, borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 24 }}>
+      <div style={{ marginTop: 28, borderTop: "1px solid var(--color-surface-elevated)", paddingTop: 24 }}>
         <h2 style={{ ...sectionTitle, marginBottom: 10 }}>元数据源</h2>
 
         {/* TMDB Key */}
@@ -383,8 +383,8 @@ export default function SettingsMedia() {
             style={{
               width: 18, height: 18,
               borderRadius: "50%",
-              background: showTmdbHelp ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
-              color: "rgba(255,255,255,0.3)",
+              background: showTmdbHelp ? "var(--color-surface)" : "var(--color-surface-elevated)",
+              color: "var(--color-text-muted)",
               fontSize: 11,
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", userSelect: "none",
@@ -400,13 +400,13 @@ export default function SettingsMedia() {
           <div
             style={{
               fontSize: 11,
-              color: "rgba(255,255,255,0.3)",
+              color: "var(--color-text-muted)",
               lineHeight: 1.7,
               padding: "8px 12px",
               marginBottom: 8,
               borderRadius: 6,
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              background: "var(--color-surface-elevated)",
+              border: "1px solid var(--color-surface-elevated)",
             }}
           >
             TMDB 是全球最大的影视数据库，Mochi 用它拉取海报、简介与演员表。
@@ -418,7 +418,7 @@ export default function SettingsMedia() {
                 color: "rgba(196,126,58,0.5)",
                 cursor: "pointer",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(196,126,58,0.8)")}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-accent)")}
               onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(196,126,58,0.5)")}
             >
               去注册 →
@@ -454,17 +454,17 @@ export default function SettingsMedia() {
         {batchStatus ? (
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
             <BreathingDot size={24} />
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+            <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
               {batchStatus}
             </span>
             {batchStatus && batchStatus !== "完成" && !batchStatus.startsWith("失败") && (
               <button
                 onClick={cancelBatchFetch}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "var(--color-surface-elevated)",
+                  border: "1px solid var(--color-surface)",
                   borderRadius: 6,
-                  color: "rgba(255,255,255,0.3)",
+                  color: "var(--color-text-muted)",
                   fontSize: 11,
                   cursor: "pointer",
                   padding: "2px 10px",
@@ -498,7 +498,7 @@ export default function SettingsMedia() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "rgba(0,0,0,0.5)",
+              background: "var(--color-overlay)",
               backdropFilter: "blur(4px)",
             }}
           >
@@ -509,9 +509,9 @@ export default function SettingsMedia() {
               transition={spring.gentle}
               onClick={(e) => e.stopPropagation()}
               style={{
-                background: "rgba(14,14,14,0.96)",
+                background: "var(--color-modal-bg)",
                 backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                border: "1px solid var(--color-surface)",
                 borderRadius: 12,
                 padding: "24px 28px",
                 minWidth: 320,
@@ -522,7 +522,7 @@ export default function SettingsMedia() {
                 style={{
                   margin: "0 0 20px",
                   fontSize: 14,
-                  color: "rgba(255,255,255,0.75)",
+                  color: "var(--color-text-secondary)",
                   lineHeight: 1.6,
                 }}
               >
@@ -540,9 +540,9 @@ export default function SettingsMedia() {
                   style={{
                     padding: "7px 20px",
                     borderRadius: 8,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "rgba(255,255,255,0.45)",
+                    border: "1px solid var(--color-surface)",
+                    background: "var(--color-surface-elevated)",
+                    color: "var(--color-text-muted)",
                     fontSize: 12,
                     cursor: "pointer",
                   }}
@@ -557,9 +557,9 @@ export default function SettingsMedia() {
                   style={{
                     padding: "7px 20px",
                     borderRadius: 8,
-                    border: "1px solid rgba(196,126,58,0.4)",
-                    background: "rgba(196,126,58,0.12)",
-                    color: "#c47e3a",
+                    border: "1px solid var(--color-accent-dim)",
+                    background: "var(--color-accent-dim)",
+                    color: "var(--color-accent)",
                     fontSize: 12,
                     cursor: "pointer",
                   }}
@@ -580,8 +580,8 @@ export default function SettingsMedia() {
 const dirPath: React.CSSProperties = {
   flex: 1,
   fontSize: 13,
-  color: "rgba(255,255,255,0.5)",
-  background: "rgba(255,255,255,0.06)",
+  color: "var(--color-text-secondary)",
+  background: "var(--color-surface-elevated)",
   borderRadius: 6,
   padding: "8px 14px",
 };
@@ -589,7 +589,7 @@ const dirPath: React.CSSProperties = {
 const deleteBtn: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "rgba(255,255,255,0.3)",
+  color: "var(--color-text-muted)",
   fontSize: 14,
   cursor: "pointer",
   padding: "0 4px",
@@ -598,7 +598,7 @@ const deleteBtn: React.CSSProperties = {
 const textBtn: React.CSSProperties = {
   background: "none",
   border: "none",
-  color: "rgba(255,255,255,0.4)",
+  color: "var(--color-text-muted)",
   fontSize: 13,
   cursor: "pointer",
   padding: "4px 0",
@@ -607,21 +607,21 @@ const textBtn: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "10px 14px",
-  border: "1px solid rgba(255,255,255,0.1)",
+  border: "1px solid var(--color-surface)",
   borderRadius: 8,
   fontSize: 13,
   outline: "none",
   boxSizing: "border-box",
-  background: "rgba(255,255,255,0.05)",
-  color: "rgba(255,255,255,0.7)",
+  background: "var(--color-surface-elevated)",
+  color: "var(--color-text-secondary)",
 };
 
 const browseBtn: React.CSSProperties = {
   padding: "8px 12px",
   borderRadius: 6,
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "rgba(255,255,255,0.06)",
-  color: "rgba(255,255,255,0.5)",
+  border: "1px solid var(--color-surface)",
+  background: "var(--color-surface-elevated)",
+  color: "var(--color-text-secondary)",
   fontSize: 12,
   cursor: "pointer",
   whiteSpace: "nowrap",
@@ -631,9 +631,9 @@ const browseBtn: React.CSSProperties = {
 const confirmBtn: React.CSSProperties = {
   padding: "8px 14px",
   borderRadius: 6,
-  border: "1px solid rgba(196,126,58,0.3)",
-  background: "rgba(196,126,58,0.1)",
-  color: "#c47e3a",
+  border: "1px solid var(--color-accent-dim)",
+  background: "var(--color-accent-dim)",
+  color: "var(--color-accent)",
   fontSize: 12,
   cursor: "pointer",
   whiteSpace: "nowrap",

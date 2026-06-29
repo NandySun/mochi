@@ -32,7 +32,7 @@ function CastAvatar({ member, avatarSize, hideSubName }: { member: CastMember; s
       {/* Avatar circle */}
       <motion.div
         whileHover={{
-          boxShadow: "0 0 12px rgba(196,126,58,0.22)",
+          boxShadow: "0 0 12px var(--color-accent-dim)",
         }}
         style={{
           width: avatarSize,
@@ -40,7 +40,7 @@ function CastAvatar({ member, avatarSize, hideSubName }: { member: CastMember; s
           borderRadius: "50%",
           overflow: "hidden",
           flexShrink: 0,
-          background: imageUrl ? undefined : "rgba(196,126,58,0.12)",
+          background: imageUrl ? undefined : "var(--color-accent-dim)",
           backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
           backgroundSize: "cover",
           backgroundPosition: "center",
@@ -68,7 +68,7 @@ function CastAvatar({ member, avatarSize, hideSubName }: { member: CastMember; s
         style={{
           fontSize: 11,
           fontWeight: 500,
-          color: "rgba(232,228,223,0.9)",
+          color: "var(--color-text)",
           textAlign: "center",
           lineHeight: 1.2,
           overflow: "hidden",
@@ -86,7 +86,7 @@ function CastAvatar({ member, avatarSize, hideSubName }: { member: CastMember; s
         <span
           style={{
             fontSize: 10,
-            color: "rgba(232,228,223,0.33)",
+            color: "var(--color-text-muted)",
             textAlign: "center",
             lineHeight: 1.2,
             overflow: "hidden",

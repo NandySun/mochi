@@ -4,15 +4,15 @@ import type { CSSProperties } from "react";
 
 export const sectionTitle: CSSProperties = {
   fontSize: 12,
-  color: "rgba(255,255,255,0.3)",
+  color: "var(--color-text-muted)",
   textTransform: "uppercase",
   letterSpacing: 2,
   marginBottom: 16,
 };
 
 export const actionBtn: CSSProperties = {
-  background: "rgba(255,255,255,0.08)",
-  color: "rgba(255,255,255,0.6)",
+  background: "var(--color-surface)",
+  color: "var(--color-text-secondary)",
   borderRadius: 8,
   padding: "6px 20px",
   fontSize: 12,
@@ -23,7 +23,7 @@ export const actionBtn: CSSProperties = {
 export const label: CSSProperties = {
   display: "block",
   fontSize: 13,
-  color: "rgba(255,255,255,0.45)",
+  color: "var(--color-text-secondary)",
   marginBottom: 6,
 };
 
@@ -33,9 +33,9 @@ export const kbdStyle: CSSProperties = {
   textAlign: "center",
   padding: "3px 10px",
   borderRadius: 5,
-  background: "rgba(255,255,255,0.08)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  color: "rgba(255,255,255,0.6)",
+  background: "var(--color-kbd-bg)",
+  border: "1px solid var(--color-kbd-border)",
+  color: "var(--color-kbd-text)",
   fontSize: 11,
   fontFamily: "inherit",
   lineHeight: 1.4,
