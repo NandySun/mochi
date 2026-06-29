@@ -690,6 +690,34 @@ pub fn delete_missing_episodes(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Delete episodes of a specific series whose files no longer exist on disk.
+pub fn delete_missing_episodes_for_series(conn: &Connection, series_id: i64) -> Result<usize> {
+    let mut stmt = conn.prepare(
+        "SELECT id, file_path FROM episodes WHERE series_id = ?1"
+    )?;
+    let to_delete: Vec<i64> = stmt
+        .query_map(params![series_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .filter(|(id, path)| {
+            let exists = std::path::Path::new(path).exists();
+            if !exists {
+                eprintln!("  delete_missing: episode {id} file missing: {path}");
+            }
+            !exists
+        })
+        .map(|(id, _)| id)
+        .collect();
+
+    let total = to_delete.len();
+    eprintln!("  delete_missing_for_series {series_id}: checked episodes, deleting {total}");
+    for id in &to_delete {
+        conn.execute("DELETE FROM episodes WHERE id = ?1", params![id])?;
+    }
+    Ok(total)
+}
+
 // ── Data stats ──────────────────────────────────────────────────────────────
 
 /// Lightweight stats for the 数据 tab: cache size is computed on the Rust side;

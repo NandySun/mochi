@@ -118,7 +118,7 @@ pub async fn fetch_metadata(
                 Err(_e) => {
                     // Bangumi failed – try TMDB fallback
                     if let Some(key) = tmdb_api_key {
-                        match try_tmdb(search_term, key, proxy_url, force).await {
+                        match try_tmdb(search_term, key, proxy_url, force, true).await {
                             Ok(mut result) => {
                                 result.series_type = fallback_type.clone();
                                 return Ok(result);
@@ -132,7 +132,7 @@ pub async fn fetch_metadata(
         "tv" | "movie" | "variety" => {
             // TMDB first for TV/movies/variety, Bangumi as fallback
             if let Some(key) = tmdb_api_key {
-                match try_tmdb(search_term, key, proxy_url, force).await {
+                match try_tmdb(search_term, key, proxy_url, force, false).await {
                     Ok(result) => return Ok(result),
                     Err(_) => { /* fall through */ }
                 }
@@ -153,7 +153,7 @@ pub async fn fetch_metadata(
             let bgm_fut = try_bangumi(search_term, proxy_url, force);
             let tmdb_fut = async {
                 if let Some(key) = tmdb_api_key {
-                    try_tmdb(search_term, key, proxy_url, force).await
+                    try_tmdb(search_term, key, proxy_url, force, false).await
                 } else {
                     Err("TMDB API key not configured".to_string())
                 }
@@ -244,13 +244,21 @@ async fn try_tmdb(
     api_key: &str,
     proxy_url: Option<&str>,
     force: bool,
+    prefer_animation: bool,
 ) -> Result<MetadataResult, String> {
     let tmdb = TmdbClient::new(api_key, proxy_url);
 
     // Try TV first
     let tv_results = tmdb.search_tv(search_term, "zh-CN", 1).await.map_err(|e| format!("TMDB TV: {e}"))?;
     if !tv_results.is_empty() {
-        let tv = &tv_results[0];
+        let tv = if prefer_animation {
+            tv_results
+                .iter()
+                .find(|r| r.genre_ids.as_ref().map_or(false, |g| g.contains(&16)))
+                .unwrap_or(&tv_results[0])
+        } else {
+            &tv_results[0]
+        };
         if let Ok(detail) = tmdb.get_tv_details(tv.id, "zh-CN").await {
             return build_tmdb_result("tv", &detail, proxy_url, force).await;
         }
@@ -260,7 +268,14 @@ async fn try_tmdb(
     // Try movie
     let movie_results = tmdb.search_movie(search_term, "zh-CN", 1).await.map_err(|e| format!("TMDB Movie: {e}"))?;
     if !movie_results.is_empty() {
-        let movie = &movie_results[0];
+        let movie = if prefer_animation {
+            movie_results
+                .iter()
+                .find(|r| r.genre_ids.as_ref().map_or(false, |g| g.contains(&16)))
+                .unwrap_or(&movie_results[0])
+        } else {
+            &movie_results[0]
+        };
         if let Ok(detail) = tmdb.get_movie_details(movie.id, "zh-CN").await {
             return build_tmdb_result("movie", &detail, proxy_url, force).await;
         }

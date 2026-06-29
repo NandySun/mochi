@@ -1,11 +1,20 @@
 use crate::db::{self, Episode, Person, Series};
 use crate::metadata::{self, MetadataResult};
 use crate::scanner::{self, ScanResult};
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
+use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::State;
 use tauri::Emitter;
+
+/// Result of rescanning a single series folder.
+#[derive(Debug, Clone, Serialize)]
+pub struct RescanResult {
+    pub episodes_found: usize,
+    pub episodes_new: usize,
+    pub episodes_deleted: usize,
+}
 
 /// Application state holding the database connection and runtime config.
 pub struct AppState {
@@ -718,6 +727,12 @@ pub fn set_fullscreen(window: tauri::Window, fullscreen: bool) {
     window.set_fullscreen(fullscreen).ok();
 }
 
+/// Get the main window fullscreen state.
+#[tauri::command]
+pub fn get_fullscreen(window: tauri::Window) -> Result<bool, String> {
+    window.is_fullscreen().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn window_minimize(window: tauri::Window) {
     window.minimize().ok();
@@ -753,6 +768,7 @@ pub async fn fetch_episode_metadata(
     state: State<'_, AppState>,
     series_id: i64,
     tmdb_api_key: Option<String>,
+    force: Option<bool>,
 ) -> Result<usize, String> {
     let proxy_url = std::env::var("MOCHI_PROXY_URL").ok();
     let key = tmdb_api_key.unwrap_or_default();
@@ -761,7 +777,7 @@ pub async fn fetch_episode_metadata(
         return Err("TMDB API key not configured".to_string());
     }
 
-    crate::metadata::fetch_episode_metadata(&state.db, series_id, &key, proxy_url.as_deref()).await
+    crate::metadata::fetch_episode_metadata(&state.db, series_id, &key, proxy_url.as_deref(), force.unwrap_or(false)).await
 }
 
 /// Fetch cast (actors/characters) for a series.
@@ -786,6 +802,190 @@ pub fn get_series_cast(
 ) -> Result<Vec<(Person, i32)>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::get_series_cast(&conn, series_id).map_err(|e| e.to_string())
+}
+
+// ── Single-series refresh (mirrors batch per-series logic) ───────────────────
+
+/// Refresh metadata for a single series, using the same code path as batch fetch.
+/// Unlike `fetch_metadata`, this bypasses the command-level wrappers and calls
+/// `fetch_cast` / `fetch_episode_metadata` with explicit proxy support.
+#[tauri::command]
+pub async fn refresh_single_series(
+    state: State<'_, AppState>,
+    series_id: i64,
+    tmdb_api_key: Option<String>,
+    proxy_url: Option<String>,
+    search_term_override: Option<String>,
+) -> Result<(), String> {
+    let key = tmdb_api_key.as_deref();
+    let proxy = proxy_url.as_deref();
+
+    // Phase 1: Read series from DB
+    let series = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::get_series_by_id(&conn, series_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Series not found: {series_id}"))?
+    };
+
+    // Phase 2: Fetch series metadata
+    let effective_term = search_term_override
+        .as_ref()
+        .filter(|t| !t.trim().is_empty())
+        .cloned()
+        .unwrap_or(series.search_term.clone());
+
+    let result = if search_term_override.is_some() {
+        // Manual override: always search, skip ID fast-path
+        metadata::fetch_metadata(&effective_term, &series.series_type, key, proxy, true).await?
+    } else {
+        fetch_series_metadata(
+            &effective_term,
+            &series.series_type,
+            series.bangumi_id,
+            series.tmdb_id,
+            key,
+            proxy,
+            true,
+        )
+        .await?
+    };
+
+    // Phase 3: Persist
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        persist_metadata_result(&conn, series_id, &result)
+            .map_err(|e| format!("Failed to persist metadata: {e}"))?;
+        if search_term_override.is_some() {
+            db::update_series_search_term(&conn, series_id, &effective_term)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Phase 4: Cast + episode metadata (same as batch — direct module calls, quiet errors)
+    if let Some(k) = key {
+        crate::metadata::fetch_cast(&state.db, series_id, Some(k), proxy).await.ok();
+        crate::metadata::fetch_episode_metadata(&state.db, series_id, k, proxy, true).await.ok();
+    }
+
+    Ok(())
+}
+
+// ── Single-series rescan ─────────────────────────────────────────────────────
+
+/// Rescan a single series folder for new/removed episode files.
+/// Useful for ongoing series where new episodes are added to an existing folder.
+#[tauri::command]
+pub fn rescan_series_folder(
+    state: State<AppState>,
+    series_id: i64,
+    root_paths: Vec<String>,
+) -> Result<RescanResult, String> {
+    // Phase 1: Read series from DB
+    let series = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::get_series_by_id(&conn, series_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Series not found: {series_id}"))?
+    };
+
+    let folder_name = &series.folder_name;
+
+    // Phase 2: Find the folder on disk
+    // Try all known type-hint directories + flat layout
+    let mut found_path: Option<std::path::PathBuf> = None;
+    let all_type_dirs = ["anime", "tv", "movie", "variety"];
+
+    for root in &root_paths {
+        let root_path = std::path::Path::new(root);
+        // Try hierarchical: root / {anime,tv,movie,variety} / folder_name
+        for type_dir in &all_type_dirs {
+            let candidate = root_path.join(type_dir).join(folder_name);
+            if candidate.is_dir() {
+                found_path = Some(candidate);
+                break;
+            }
+        }
+        if found_path.is_some() {
+            break;
+        }
+        // Try flat: root / folder_name
+        let candidate = root_path.join(folder_name);
+        if candidate.is_dir() {
+            found_path = Some(candidate);
+            break;
+        }
+    }
+
+    let dir_path = found_path.ok_or_else(|| {
+        format!("Series folder not found on disk: {folder_name}")
+    })?;
+
+    // Phase 3: Extract season from folder name and scan
+    let (_, folder_season) = scanner::extract_season_from_name(folder_name);
+    let (episodes, _poster, _fanart) =
+        scanner::scan_series_folder(&dir_path, folder_season)?;
+
+    // Phase 4: Upsert episodes to DB
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let before_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM episodes WHERE series_id = ?1",
+            params![series_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    eprintln!("rescan series {series_id}: scanned={} before={before_count}", episodes.len());
+
+    for ep_scan in &episodes {
+        let subtitle_paths_json = if ep_scan.subtitle_paths.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&ep_scan.subtitle_paths).unwrap_or_default())
+        };
+        let episode = Episode {
+            id: 0,
+            series_id,
+            season_number: ep_scan.season_number,
+            episode_number: ep_scan.episode_number,
+            title: ep_scan.title.clone(),
+            file_path: ep_scan.file_path.clone(),
+            duration: 0,
+            subtitle_count: ep_scan.subtitle_count,
+            subtitle_paths: subtitle_paths_json,
+            status: ep_scan.status.clone(),
+            watched_progress: 0,
+            watched_completed: 0,
+            still_path: None,
+            still_url: None,
+            overview: None,
+            air_date: None,
+            runtime: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        db::upsert_episode(&conn, &episode).map_err(|e| e.to_string())?;
+    }
+
+    // Phase 5: Clean up episodes that no longer exist on disk (for this series only)
+    let deleted = db::delete_missing_episodes_for_series(&conn, series_id).map_err(|e| e.to_string())?;
+    eprintln!("rescan series {series_id}: deleted={deleted}", );
+
+    let after_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM episodes WHERE series_id = ?1",
+            params![series_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let new_count = (after_count - before_count).max(0) as usize;
+    Ok(RescanResult {
+        episodes_found: episodes.len(),
+        episodes_new: new_count,
+        episodes_deleted: deleted,
+    })
 }
 
 // ── Onboarding ───────────────────────────────────────────────────────────────
@@ -887,7 +1087,7 @@ pub async fn batch_fetch_all_metadata(
 
         // Fetch episode metadata (quiet)
         if let Some(k) = key {
-            crate::metadata::fetch_episode_metadata(&state.db, series.id, k, proxy).await.ok();
+            crate::metadata::fetch_episode_metadata(&state.db, series.id, k, proxy, true).await.ok();
         }
 
         // Rate limit: 250ms between series (TMDB free tier: ~40 req/s)

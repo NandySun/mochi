@@ -34,6 +34,7 @@ pub async fn fetch_episode_metadata(
     series_id: i64,
     tmdb_api_key: &str,
     proxy_url: Option<&str>,
+    force: bool,
 ) -> Result<usize, String> {
     // ── Phase 1: Read context from DB ──────────────────────────────────
     let ctx = {
@@ -150,7 +151,7 @@ pub async fn fetch_episode_metadata(
                 let url = tmdb::tmdb_image_url(still, "w300");
                 match cache::tmdb_cache_path("still", local_ep.id) {
                     Ok(cache_path) => {
-                        match cache::download_image(&url, &cache_path, proxy_url, false).await {
+                        match cache::download_image(&url, &cache_path, proxy_url, force).await {
                             Ok(()) => Some(cache_path.to_string_lossy().to_string()),
                             Err(e) => {
                                 eprintln!("Still download warning for E{:02}: {e}", local_ep.episode_number);

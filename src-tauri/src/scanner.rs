@@ -26,8 +26,8 @@ const FANART_NAMES: &[&str] = &["fanart.jpg", "backdrop.jpg", "fanart.png", "bac
 fn ep_patterns() -> &'static [(Regex, bool)] {
     static PATTERNS: LazyLock<Vec<(Regex, bool)>> = LazyLock::new(|| {
         vec![
-            // 1. _EXX  →  episode only
-            (Regex::new(r"_E(\d{1,3})").unwrap(), false),
+            // 1. EXX / _EXX  →  episode only, with optional 上下/ab half-ep suffix
+            (Regex::new(r"(?i)(?:^|_)E(\d{1,3})([上下ab])?").unwrap(), false),
             // 2. 第XX集 →  episode only
             (Regex::new(r"第(\d{1,3})集").unwrap(), false),
             // 3. SXXEYY →  season + episode
@@ -153,6 +153,91 @@ pub struct EpisodeScan {
 
 /// Split folder name on the last underscore: "黄泉使者_Yomi no Tsugai"
 /// → display = "黄泉使者", search = "Yomi no Tsugai"
+/// Clean noise from anime folder names: strip release group tags, encoding metadata,
+/// episode range info, and other non-title cruft. Preserves the actual show title.
+fn clean_anime_folder_name(raw: &str) -> String {
+    // ── Regex for metadata keywords (case-insensitive, no boundary requirement) ──
+    static META_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)(\d{3,4}[px]|hevc|avc|flac|aac|dts|atmos|ac3|dual\s*audio|10bit|8bit|bdrip|dvd|web-dl|webrip|bluray|remux|简繁|外挂|内封|内嵌|字幕|\bmkv\b|\bmp4\b|hi10p|av1|5\.1|2\.0)").unwrap()
+    });
+
+    // ── Regex for episode range patterns ──────────────────────────
+    static RANGE_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\d{1,3}\s*[~～\-–]\s*\d{1,3}|\d{1,3}-\d{1,3}.*(?:[Tt][Vv]|全集)").unwrap()
+    });
+
+    // ── Collect all bracket segments with classification ──────────
+    static BRACKET_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]+)\]").unwrap());
+
+    let bracket_matches: Vec<(usize, usize, String, bool)> = BRACKET_RE
+        .captures_iter(raw)
+        .enumerate()
+        .map(|(idx, cap)| {
+            let m = cap.get(0).unwrap();
+            let content = cap[1].to_string();
+            let is_first = idx == 0;
+            let is_group = is_first
+                && content.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+                && content.len() <= 20
+                && !content.contains('\u{4e00}'); // no CJK
+            let is_meta = META_RE.is_match(&content);
+            let is_range = RANGE_RE.is_match(&content);
+            let keep = !is_group && !is_meta && !is_range;
+            (m.start(), m.end(), content, keep)
+        })
+        .collect();
+
+    // ── Rebuild: keep non-bracket text + kept brackets ─────────────
+    let mut result = String::new();
+    let mut cursor = 0usize;
+    for (start, end, _, keep) in &bracket_matches {
+        // Add text before this bracket
+        if *start > cursor {
+            result.push_str(&raw[cursor..*start]);
+        }
+        // Add bracket content if kept (strip brackets)
+        if *keep {
+            result.push_str(&raw[*start+1..*end-1]);
+        }
+        cursor = *end;
+    }
+    // Add remaining text after last bracket
+    if cursor < raw.len() {
+        result.push_str(&raw[cursor..]);
+    }
+
+    if result.is_empty() {
+        return raw.to_string();
+    }
+
+    // ── Step 2: Strip non-bracket noise from the cleaned text ──────
+    let trimmed = result.trim().trim_matches('-').trim_matches('+').trim();
+
+    // Remove substrings matching common noise patterns
+    static NOISE_RES: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+        vec![
+            Regex::new(r"(?i)\s*BD[-\s]*BOX\s*").unwrap(),
+            Regex::new(r"(?i)\s*-\s*TV\s*").unwrap(),
+            Regex::new(r"\s*\+\s*SP\s*").unwrap(),
+            Regex::new(r"\s*\+\s*Movie\s*").unwrap(),
+            Regex::new(r"\s+-\s*\d{1,3}\s*[~～]\s*\d{1,3}\s*").unwrap(),
+            Regex::new(r"\s+Subs\s*$").unwrap(),
+        ]
+    });
+
+    let mut cleaned = trimmed.to_string();
+    for re in NOISE_RES.iter() {
+        cleaned = re.replace_all(&cleaned, " ").to_string();
+    }
+
+    let final_clean = cleaned.trim().trim_matches('-').trim_matches('+').trim();
+    if final_clean.is_empty() {
+        raw.to_string()
+    } else {
+        final_clean.to_string()
+    }
+}
+
 fn parse_folder_name(folder: &str) -> (String, String) {
     if let Some(pos) = folder.rfind('_') {
         let display = folder[..pos].to_string();
@@ -276,7 +361,8 @@ pub fn resolve_type_from_filesystem(root_paths: &[String], folder_name: &str) ->
 /// Returns (season_number, episode_number, season_explicit) or None if no pattern matched.
 /// `season_explicit` is true when the season came from an SXXEYY pattern, false when it defaulted to 1.
 fn extract_episode_info(filename: &str) -> Option<(i32, i32, bool)> {
-    for (re, has_season) in ep_patterns().iter() {
+    // Track the first pattern index for half-episode conversion (only pattern 0)
+    for (idx, (re, has_season)) in ep_patterns().iter().enumerate() {
         if let Some(caps) = re.captures(filename) {
             if *has_season {
                 // SXXEYY pattern — season is explicit
@@ -284,7 +370,18 @@ fn extract_episode_info(filename: &str) -> Option<(i32, i32, bool)> {
                 let e: i32 = caps.get(2).and_then(|m| m.as_str().parse().ok())?;
                 return Some((s, e, true));
             } else {
-                let e: i32 = caps.get(1).and_then(|m| m.as_str().parse().ok())?;
+                let mut e: i32 = caps.get(1).and_then(|m| m.as_str().parse().ok())?;
+                // Pattern 0 (E01上 / E11a style): apply half-episode conversion
+                if idx == 0 {
+                    if let Some(suffix) = caps.get(2) {
+                        let s = suffix.as_str().to_lowercase();
+                        if s == "上" || s == "a" {
+                            e = e * 2 - 1;  // 上半集 → 2N-1
+                        } else if s == "下" || s == "b" {
+                            e = e * 2;      // 下半集 → 2N
+                        }
+                    }
+                }
                 return Some((1, e, false));
             }
         }
@@ -346,7 +443,7 @@ fn parse_chinese_numeral(s: &str) -> Option<i32> {
 /// Extract season number from a folder/prefix name, e.g. "哈哈哈哈哈 第六季" → ("哈哈哈哈哈", Some(6)).
 /// Also detects patterns like "Season 3", "S3", and Chinese numerals (第X季).
 /// Returns (cleaned_name, season_number).
-fn extract_season_from_name(name: &str) -> (String, Option<i32>) {
+pub(crate) fn extract_season_from_name(name: &str) -> (String, Option<i32>) {
     static SEASON_RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"[\s\-–]*第\s*([\d一二三四五六七八九十百千]+)\s*季$|[\s\-–]*[Ss]eason\s*(\d+)$|[\s\-–]*[Ss](\d+)$").unwrap());
     if let Some(caps) = SEASON_RE.captures(name) {
@@ -406,6 +503,50 @@ fn filename_lower(path: &Path) -> Option<String> {
 ///     太阳星辰\                     → type=tv
 ///   上伊那牡丹_Kamiina Botan\        ← no hint → type=unknown (or root_type if set)
 /// ```
+/// Check if a directory has any video files at depth 1 (not inside subdirectories).
+fn has_video_at_depth1(dir: &Path) -> bool {
+    for entry in WalkDir::new(dir).min_depth(1).max_depth(1).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            if let Some(ext) = entry.path().extension().and_then(|x| x.to_str()) {
+                if VIDEO_EXTS.contains(&ext.to_lowercase().as_str()) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Build a SeriesScan from a single series folder.
+fn build_series_scan(
+    dir_path: &Path,
+    folder_name: &str,
+    display_override: Option<String>,
+    resolved_type: Option<String>,
+) -> Result<Option<SeriesScan>, String> {
+    let base_display = display_override.unwrap_or_else(|| folder_name.to_string());
+    let (base_clean, folder_season) = extract_season_from_name(&base_display);
+    let cleaned = clean_anime_folder_name(&base_clean);
+    let (display_name, search_term) = parse_folder_name(&cleaned);
+
+    let (episodes, poster_path, fanart_path) =
+        scan_series_folder(dir_path, folder_season)?;
+    if episodes.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(SeriesScan {
+        folder_name: folder_name.to_string(),
+        display_name,
+        search_term,
+        poster_path,
+        fanart_path,
+        series_type_hint: resolved_type,
+        episodes,
+        folder_path: dir_path.to_string_lossy().to_string(),
+    }))
+}
+
 pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResult, String> {
     let root = Path::new(root_path);
     if !root.is_dir() {
@@ -487,27 +628,51 @@ pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResu
                 let (resolved_type, display_override) =
                     resolve_type_hint(sub_entry.path(), &folder_name, Some(&hint));
 
-                // Determine display_name and search_term, strip season from folder name
-                let base_display = display_override.unwrap_or_else(|| folder_name.clone());
-                let (base_clean, folder_season) = extract_season_from_name(&base_display);
-                let (display_name, search_term) = parse_folder_name(&base_clean);
+                if has_video_at_depth1(sub_entry.path()) {
+                    // Flat series: scan the folder directly
+                    if let Some(s) = build_series_scan(
+                        sub_entry.path(),
+                        &folder_name,
+                        display_override,
+                        resolved_type,
+                    )? {
+                        series_list.push(s);
+                    }
+                } else {
+                    // Nested structure: each subdirectory is a separate series
+                    for nested in WalkDir::new(sub_entry.path())
+                        .min_depth(1)
+                        .max_depth(1)
+                        .sort_by_file_name()
+                        .into_iter()
+                        .filter_map(|e| e.ok())
+                    {
+                        if !nested.file_type().is_dir() {
+                            continue;
+                        }
+                        let nested_name = nested
+                            .file_name()
+                            .to_str()
+                            .unwrap_or("")
+                            .to_string();
+                        if nested_name.starts_with('.') {
+                            continue;
+                        }
 
-                let (episodes, poster_path, fanart_path) =
-                    scan_series_folder(sub_entry.path(), folder_season)?;
-                // Skip empty folders (no video files)
-                if episodes.is_empty() {
-                    continue;
+                        let (nested_type, nested_display) =
+                            resolve_type_hint(nested.path(), &nested_name, Some(&hint));
+                        let effective_type = nested_type.or(resolved_type.clone());
+
+                        if let Some(s) = build_series_scan(
+                            nested.path(),
+                            &nested_name,
+                            nested_display,
+                            effective_type,
+                        )? {
+                            series_list.push(s);
+                        }
+                    }
                 }
-                series_list.push(SeriesScan {
-                    folder_name,
-                    display_name,
-                    search_term,
-                    poster_path,
-                    fanart_path,
-                    series_type_hint: resolved_type,
-                    episodes,
-                    folder_path: sub_entry.path().to_string_lossy().to_string(),
-                });
             }
         } else {
             // Legacy: depth-1 folder is directly a series
@@ -525,26 +690,51 @@ pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResu
             let (resolved_type, display_override) =
                 resolve_type_hint(entry.path(), &folder_name, root_parent_hint);
 
-            let base_display = display_override.unwrap_or_else(|| folder_name.clone());
-            let (base_clean, folder_season) = extract_season_from_name(&base_display);
-            let (display_name, search_term) = parse_folder_name(&base_clean);
+            if has_video_at_depth1(entry.path()) {
+                // Flat series: scan the folder directly
+                if let Some(s) = build_series_scan(
+                    entry.path(),
+                    &folder_name,
+                    display_override,
+                    resolved_type,
+                )? {
+                    series_list.push(s);
+                }
+            } else {
+                // Nested structure: each subdirectory is a separate series
+                for nested in WalkDir::new(entry.path())
+                    .min_depth(1)
+                    .max_depth(1)
+                    .sort_by_file_name()
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    if !nested.file_type().is_dir() {
+                        continue;
+                    }
+                    let nested_name = nested
+                        .file_name()
+                        .to_str()
+                        .unwrap_or("")
+                        .to_string();
+                    if nested_name.starts_with('.') {
+                        continue;
+                    }
 
-            let (episodes, poster_path, fanart_path) =
-                scan_series_folder(entry.path(), folder_season)?;
-            // Skip empty folders (no video files)
-            if episodes.is_empty() {
-                continue;
+                    let (nested_type, nested_display) =
+                        resolve_type_hint(nested.path(), &nested_name, root_parent_hint);
+                    let effective_type = nested_type.or(resolved_type.clone());
+
+                    if let Some(s) = build_series_scan(
+                        nested.path(),
+                        &nested_name,
+                        nested_display,
+                        effective_type,
+                    )? {
+                        series_list.push(s);
+                    }
+                }
             }
-            series_list.push(SeriesScan {
-                folder_name,
-                display_name,
-                search_term,
-                poster_path,
-                fanart_path,
-                series_type_hint: resolved_type,
-                episodes,
-                folder_path: entry.path().to_string_lossy().to_string(),
-            });
         }
     }
 
@@ -716,7 +906,8 @@ fn cluster_flat_files(
         };
 
         let base_display = display_override.unwrap_or_else(|| prefix_clean.clone());
-        let (display_name, search_term) = parse_folder_name(&base_display);
+        let cleaned = clean_anime_folder_name(&base_display);
+        let (display_name, search_term) = parse_folder_name(&cleaned);
 
         series_list.push(SeriesScan {
             folder_name,
@@ -761,7 +952,7 @@ fn extract_series_prefix(filename: &str) -> String {
         Some(pos) => stem[..pos].trim().to_string(),
     }
 }
-fn scan_series_folder(
+pub(crate) fn scan_series_folder(
     dir: &Path,
     default_season: Option<i32>,
 ) -> Result<(Vec<EpisodeScan>, Option<String>, Option<String>), String> {

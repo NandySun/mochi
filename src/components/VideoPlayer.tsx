@@ -420,7 +420,7 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
       </motion.div>
 
       {/* ── Video area ───────────────────────────────────────────────── */}
-      <div data-mpv-area style={{
+      <div data-mpv-area onDoubleClick={toggleFullscreen} style={{
         flex: 1, minWidth: 0,
         background: "transparent", position: "relative",
         borderRadius: isFullscreen ? 0 : 10, overflow: "hidden",

@@ -36,15 +36,34 @@ pub async fn fetch_cast(
     // ── Phase 2: Fetch cast data (async, no DB lock) ──────────────────
     let cast_data: Vec<(Person, i32)> = match series.series_type.as_str() {
         "anime" => {
-            let bangumi_id = series
-                .bangumi_id
-                .ok_or_else(|| "Series has no Bangumi ID".to_string())?;
-            let bgm = BangumiClient::with_proxy(proxy_url);
-            let characters = bgm
-                .get_characters(bangumi_id as i32)
-                .await
-                .map_err(|e| format!("Bangumi characters: {e}"))?;
-            build_anime_cast(&characters, proxy_url).await
+            // Try Bangumi first, fallback to TMDB if Bangumi unavailable
+            if let Some(bid) = series.bangumi_id.filter(|&id| id > 0) {
+                let bgm = BangumiClient::with_proxy(proxy_url);
+                match bgm.get_characters(bid as i32).await {
+                    Ok(chars) => build_anime_cast(&chars, proxy_url).await,
+                    Err(_) if series.tmdb_id.is_some() && tmdb_api_key.is_some() => {
+                        // Bangumi failed, use TMDB credits
+                        let tmdb = TmdbClient::new(tmdb_api_key.unwrap(), proxy_url);
+                        let credits = tmdb
+                            .get_credits("tv", series.tmdb_id.unwrap(), "zh-CN")
+                            .await
+                            .map_err(|e| format!("TMDB credits: {e}"))?;
+                        build_tmdb_cast(&credits.cast, proxy_url).await
+                    }
+                    Err(e) => return Err(format!("Bangumi characters: {e}")),
+                }
+            } else if let Some(tid) = series.tmdb_id {
+                // No Bangumi ID available, use TMDB directly
+                let key = tmdb_api_key.ok_or("TMDB API key required for cast fallback")?;
+                let tmdb = TmdbClient::new(key, proxy_url);
+                let credits = tmdb
+                    .get_credits("tv", tid, "zh-CN")
+                    .await
+                    .map_err(|e| format!("TMDB credits: {e}"))?;
+                build_tmdb_cast(&credits.cast, proxy_url).await
+            } else {
+                return Err("Series has neither Bangumi ID nor TMDB ID".to_string());
+            }
         }
         "tv" | "movie" => {
             let key = tmdb_api_key.ok_or("TMDB API key required for cast")?;

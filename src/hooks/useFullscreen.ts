@@ -1,8 +1,13 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 export function useFullscreen() {
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Read initial fullscreen state from native window on mount
+  useEffect(() => {
+    invoke<boolean>("get_fullscreen").then(setIsFullscreen).catch(() => {});
+  }, []);
 
   const toggle = useCallback(async () => {
     const next = !isFullscreen;

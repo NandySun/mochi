@@ -170,6 +170,8 @@ export default function SeriesDetail() {
   const [typeOpen, setTypeOpen] = useState(false);
   const typeRef = useRef<HTMLDivElement>(null);
   const [refreshingMeta, setRefreshingMeta] = useState(false);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanMsg, setRescanMsg] = useState<string | null>(null);
   const [editSearchTerm, setEditSearchTerm] = useState(false);
   const [searchTermInput, setSearchTermInput] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -255,34 +257,50 @@ export default function SeriesDetail() {
     try {
       const tmdbKey = localStorage.getItem("mochi_tmdb_key") ?? "";
       const proxyUrl = localStorage.getItem("mochi_proxy_url") ?? "";
-      const rootDirs = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]");
-      // Support both old (string[]) and new ({path, type}[]) formats
-      const rootPaths: string[] = Array.isArray(rootDirs) && rootDirs.length > 0
-        ? (typeof rootDirs[0] === "string" ? rootDirs : rootDirs.map((d: { path: string }) => d.path))
-        : [];
       const override = editSearchTerm && searchTermInput.trim()
         ? searchTermInput.trim()
         : null;
-      await invoke("fetch_metadata", {
+      await invoke("refresh_single_series", {
         seriesId,
         tmdbApiKey: tmdbKey || null,
         proxyUrl: proxyUrl || null,
-        force: false,
-        searchTermOverride: override,
-        rootPaths: rootPaths.length > 0 ? rootPaths : null,
+        searchTermOverride: override || null,
       });
       reload();
       setEditSearchTerm(false);
-      // Auto-fetch cast + episode metadata after series metadata
-      if (tmdbKey) {
-        try { await invoke("fetch_cast", { seriesId, tmdbApiKey: tmdbKey }); loadCast(); } catch {}
-        try { await invoke("fetch_episode_metadata", { seriesId, tmdbApiKey: tmdbKey }); reload(); } catch {}
-      }
+      loadCast();
       window.dispatchEvent(new CustomEvent("mochi:data-changed"));
     } catch (err) {
       console.error("Failed to refresh metadata:", err);
     }
     setRefreshingMeta(false);
+  };
+
+  const handleRescan = async () => {
+    setShowKebabMenu(false);
+    setRescanning(true);
+    try {
+      const rootDirs = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]");
+      const rootPaths: string[] = Array.isArray(rootDirs) && rootDirs.length > 0
+        ? (typeof rootDirs[0] === "string" ? rootDirs : rootDirs.map((d: { path: string }) => d.path))
+        : [];
+      const result = await invoke<{ episodes_found: number; episodes_new: number; episodes_deleted: number }>(
+        "rescan_series_folder",
+        { seriesId, rootPaths }
+      );
+      reload();
+      const parts: string[] = [`找到 ${result.episodes_found} 集`];
+      if (result.episodes_new > 0) parts.push(`新增 ${result.episodes_new}`);
+      if (result.episodes_deleted > 0) parts.push(`移除 ${result.episodes_deleted}`);
+      setRescanMsg(parts.join("，"));
+      setTimeout(() => setRescanMsg(null), 5000);
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      console.error("Failed to rescan:", err);
+      setRescanMsg(`扫描失败: ${String(err)}`);
+      setTimeout(() => setRescanMsg(null), 5000);
+    }
+    setRescanning(false);
   };
 
   const loadCast = useCallback(() => {
@@ -948,7 +966,7 @@ export default function SeriesDetail() {
 
       {/* ── Wrench FAB (bottom-right) ──────────────────────────────── */}
       <div ref={kebabRef} style={{ position: "fixed", bottom: 24, right: 24, zIndex: 60 }}>
-        {refreshingMeta ? (
+        {(refreshingMeta || rescanning) ? (
           <BreathingDot size={20} color="#c47e3a" style={{ cursor: "default" }} />
         ) : (
           <motion.button
@@ -999,6 +1017,10 @@ export default function SeriesDetail() {
                   action: () => { handleRefreshMeta(); },
                 },
                 {
+                  label: rescanning ? "⟳ 扫描中…" : "↺ 扫描新剧集",
+                  action: () => { if (!rescanning) handleRescan(); },
+                },
+                {
                   label: editSearchTerm ? "✓ 编辑搜索词" : "✎ 编辑搜索词",
                   action: () => {
                     setShowKebabMenu(false);
@@ -1043,6 +1065,27 @@ export default function SeriesDetail() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* ── Rescan result toast ──────────────────────────────────── */}
+      {rescanMsg && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 80,
+            right: 24,
+            zIndex: 65,
+            padding: "6px 14px",
+            borderRadius: 6,
+            background: "rgba(196,126,58,0.18)",
+            border: "1px solid rgba(196,126,58,0.3)",
+            color: "rgba(255,255,255,0.8)",
+            fontSize: 12,
+            pointerEvents: "none",
+          }}
+        >
+          {rescanMsg}
+        </div>
+      )}
 
       {/* ── EpisodeModal ───────────────────────────────────────────── */}
       <EpisodeModal
