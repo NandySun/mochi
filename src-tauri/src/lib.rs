@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod metadata;
 mod mochi_file;
+mod nfo;
 mod paths;
 mod scanner;
 

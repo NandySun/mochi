@@ -538,6 +538,27 @@ pub fn update_series_metadata(conn: &Connection, series_id: i64, title: &str, se
     Ok(())
 }
 
+/// Apply NFO metadata to a series, only filling fields that are currently NULL.
+/// This preserves any richer online metadata that was previously fetched.
+pub fn apply_nfo_series_metadata(
+    conn: &Connection,
+    folder_name: &str,
+    synopsis: Option<&str>,
+    year: Option<i32>,
+    genres: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET
+            synopsis = COALESCE(synopsis, ?1),
+            year = COALESCE(year, ?2),
+            genres = COALESCE(genres, ?3),
+            updated_at = datetime('now')
+         WHERE folder_name = ?4",
+        params![synopsis, year, genres, folder_name],
+    )?;
+    Ok(())
+}
+
 /// Update just the search term for a series (used for manual correction).
 pub fn update_series_search_term(conn: &Connection, series_id: i64, new_term: &str) -> Result<()> {
     conn.execute(

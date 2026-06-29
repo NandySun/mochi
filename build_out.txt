@@ -1,0 +1,4 @@
+error: invalid value ';' for '--bundles [<BUNDLES>...]'
+  [possible values: msi, nsis]
+
+For more information, try '--help'.

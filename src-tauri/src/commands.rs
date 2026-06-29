@@ -125,6 +125,20 @@ pub fn scan_library(state: State<AppState>, root_path: String, root_type: Option
 
         let series_id = db::upsert_series(&conn, &series).map_err(|e| e.to_string())?;
 
+        // Try NFO import — only fills fields that are still NULL
+        if !series_scan.folder_path.is_empty() {
+            let dir = std::path::Path::new(&series_scan.folder_path);
+            if let Some(nfo) = crate::nfo::read_nfo(dir) {
+                db::apply_nfo_series_metadata(
+                    &conn,
+                    &series_scan.folder_name,
+                    nfo.synopsis.as_deref(),
+                    nfo.year,
+                    nfo.genres.as_deref(),
+                ).ok();
+            }
+        }
+
         for ep_scan in &series_scan.episodes {
             let subtitle_paths_json = if ep_scan.subtitle_paths.is_empty() {
                 None
@@ -966,6 +980,17 @@ pub fn rescan_series_folder(
             updated_at: String::new(),
         };
         db::upsert_episode(&conn, &episode).map_err(|e| e.to_string())?;
+    }
+
+    // Try NFO import — only fills fields that are still NULL
+    if let Some(nfo) = crate::nfo::read_nfo(&dir_path) {
+        db::apply_nfo_series_metadata(
+            &conn,
+            folder_name,
+            nfo.synopsis.as_deref(),
+            nfo.year,
+            nfo.genres.as_deref(),
+        ).ok();
     }
 
     // Phase 5: Clean up episodes that no longer exist on disk (for this series only)
