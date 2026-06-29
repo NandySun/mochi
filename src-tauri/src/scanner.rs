@@ -66,11 +66,13 @@ fn is_excluded(filename: &str) -> bool {
     EXCLUDED_KEYWORDS.iter().any(|kw| lower.contains(kw))
 }
 
-/// Count subtitle files matching a given video stem and collect their paths.
+/// When exact stem matching yields no results, falls back to episode-number matching
+/// (extracts episode info from subtitle filenames using the same regex patterns).
 fn count_subtitles(
     root_subs: &[PathBuf],
     sub_dir_files: &[PathBuf],
     video_stem_lower: &str,
+    episode_number: i32,
 ) -> (i32, Vec<String>) {
     let match_sub = |sub: &&PathBuf| -> bool {
         sub.file_stem()
@@ -93,10 +95,34 @@ fn count_subtitles(
         .filter(match_sub)
         .map(|p| normalize_path(p))
         .collect();
-    let count = (matched_root.len() + matched_sub.len()) as i32;
-    let mut paths = matched_root;
-    paths.extend(matched_sub);
-    (count, paths)
+    let exact_count = matched_root.len() + matched_sub.len();
+    if exact_count > 0 {
+        let mut paths = matched_root;
+        paths.extend(matched_sub);
+        return (exact_count as i32, paths);
+    }
+
+    // ── Fallback: episode-number matching for differently-named subs ──
+    // Triggered only when exact stem match finds nothing, e.g.
+    // video: "[YakuboEncodes] Cowboy Bebop - 01.mkv"
+    // sub:   "[TxxZ] Cowboy_Bebop [01].ass"
+    let all_subs: Vec<&PathBuf> = root_subs.iter().chain(sub_dir_files.iter()).collect();
+    let matched_by_ep: Vec<String> = all_subs
+        .iter()
+        .filter(|sub| {
+            sub.file_name()
+                .and_then(|n| n.to_str())
+                .map(|name| {
+                    extract_episode_info(name)
+                        .map(|(_, ep, _)| ep == episode_number)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .map(|p| normalize_path(p))
+        .collect();
+    let count = matched_by_ep.len() as i32;
+    (count, matched_by_ep)
 }
 
 /// Canonicalize and normalize a path for mpv compatibility.
@@ -1178,7 +1204,7 @@ pub(crate) fn scan_series_folder(
         };
 
         let (subtitle_count, subtitle_paths) = count_subtitles(
-            &subtitle_files, &sub_dir_files, &stem_lower);
+            &subtitle_files, &sub_dir_files, &stem_lower, *episode_number);
 
         let abs_path = normalize_path(video_path);
 
@@ -1232,7 +1258,7 @@ pub(crate) fn scan_series_folder(
         };
 
         let (subtitle_count, subtitle_paths) = count_subtitles(
-            &subtitle_files, &sub_dir_files, &stem_lower);
+            &subtitle_files, &sub_dir_files, &stem_lower, assigned_ep);
 
         let abs_path = normalize_path(video_path);
 

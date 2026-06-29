@@ -128,8 +128,8 @@ export function useMpv() {
   const togglePlay = useCallback(async () => {
     try {
       await command("cycle", ["pause"]);
-    } catch {
-      /* mpv not ready */
+    } catch (e) {
+      console.error("[togglePlay] command failed:", e);
     }
   }, []);
 
@@ -217,6 +217,13 @@ export function useMpv() {
     }
   }, []);
 
+  /// Stop playback and unload the current file. Safe to call even when nothing is loaded.
+  const stopPlayback = useCallback(async () => {
+    try {
+      await command("stop", []);
+    } catch { /* mpv not ready */ }
+  }, []);
+
   const cycleSub = useCallback(async () => {
     try {
       await command("cycle", ["sid"]);
@@ -265,6 +272,7 @@ export function useMpv() {
     cycleSpeed,
     setVideoMargins,
     loadSubtitleFiles,
+    stopPlayback,
     cycleSub,
     refreshTracks,
     setSubTrack,

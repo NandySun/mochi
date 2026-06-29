@@ -99,9 +99,14 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
         await mpv.loadFile(filePath);
         if (cancelled) return;
 
-        // Load external subtitle files
-        if (ep.subtitle_paths && ep.subtitle_paths.length > 0) {
-          mpv.loadSubtitleFiles(ep.subtitle_paths);
+        // Load external subtitle files (parse JSON string from backend)
+        if (ep.subtitle_paths) {
+          const paths: string[] = typeof ep.subtitle_paths === 'string'
+            ? JSON.parse(ep.subtitle_paths)
+            : ep.subtitle_paths;
+          if (Array.isArray(paths) && paths.length > 0) {
+            mpv.loadSubtitleFiles(paths);
+          }
         }
 
         hasPlayedNaturallyRef.current = false;
