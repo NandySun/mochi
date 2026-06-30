@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
 import { spring } from "../animations/tokens";
 import { sectionTitle } from "../styles/settings";
+import { BreathingDot } from "./BreathingDot";
+import type { Series } from "../types";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -13,7 +15,7 @@ interface DataStats {
   episodes_total: number;
 }
 
-type CardId = "cache" | "metadata" | "verdicts" | "progress" | "factory";
+type CardId = "cache" | "metadata" | "verdicts" | "progress" | "factory" | "nfo";
 
 interface ConfirmState {
   cardId: CardId;
@@ -42,8 +44,17 @@ export default function SettingsData() {
     verdicts: null,
     progress: null,
     factory: null,
+    nfo: null,
   });
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+
+  // ── NFO state ────────────────────────────────────────────────────────────
+  const [nfoExporting, setNfoExporting] = useState(false);
+  const [nfoExportProgress, setNfoExportProgress] = useState({ done: 0, total: 0, written: 0, skipped: 0, failed: 0 });
+  const [nfoClearing, setNfoClearing] = useState(false);
+  const [nfoClearProgress, setNfoClearProgress] = useState({ done: 0, total: 0, nfoDeleted: 0, sidecarsDeleted: 0 });
+  const [nfoClearConfirmOpen, setNfoClearConfirmOpen] = useState(false);
+  const [includeSidecars, setIncludeSidecars] = useState(false);
 
   // ── Load data ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -140,6 +151,96 @@ export default function SettingsData() {
     }
   };
 
+  // ── NFO actions ───────────────────────────────────────────────────────────
+
+  const handleExportAllNfo = async () => {
+    setNfoExporting(true);
+    setNfoExportProgress({ done: 0, total: 0, written: 0, skipped: 0, failed: 0 });
+    try {
+      const rootDirs = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]") as { path: string }[];
+      const rootPaths = rootDirs.map((d) => d.path);
+      if (rootPaths.length === 0) {
+        setStatus((p) => ({ ...p, nfo: "无媒体库目录" }));
+        setNfoExporting(false);
+        setTimeout(() => setStatus((p) => ({ ...p, nfo: null })), 2000);
+        return;
+      }
+      const allSeries = await invoke<Series[]>("get_all_series");
+      setNfoExportProgress((p) => ({ ...p, total: allSeries.length }));
+      let written = 0;
+      let skipped = 0;
+      let failed = 0;
+      for (const s of allSeries) {
+        try {
+          await invoke("export_nfo", {
+            seriesId: s.id,
+            rootPaths,
+            overwrite: false,
+          });
+          written++;
+        } catch (err) {
+          const msg = String(err);
+          // "NFO already exists" is the expected skip case; not a failure
+          if (msg.includes("NFO already exists")) {
+            skipped++;
+          } else {
+            failed++;
+            console.warn(`NFO export failed for ${s.folder_name}:`, err);
+          }
+        }
+        setNfoExportProgress((p) => ({ ...p, done: p.done + 1, written, skipped, failed }));
+      }
+      console.log(
+        `NFO batch: ${written} written, ${skipped} skipped (already exist), ${failed} failed`
+      );
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      console.error("NFO batch export:", err);
+    }
+    setNfoExporting(false);
+  };
+
+  const handleClearAllNfo = async () => {
+    setNfoClearing(true);
+    setNfoClearProgress({ done: 0, total: 0, nfoDeleted: 0, sidecarsDeleted: 0 });
+    try {
+      const rootDirs = JSON.parse(localStorage.getItem("mochi_root_dirs") ?? "[]") as { path: string }[];
+      const rootPaths = rootDirs.map((d) => d.path);
+      if (rootPaths.length === 0) {
+        setStatus((p) => ({ ...p, nfo: "无媒体库目录" }));
+        setNfoClearing(false);
+        setNfoClearConfirmOpen(false);
+        setTimeout(() => setStatus((p) => ({ ...p, nfo: null })), 2000);
+        return;
+      }
+      const allSeries = await invoke<Series[]>("get_all_series");
+      setNfoClearProgress((p) => ({ ...p, total: allSeries.length }));
+      let nfoDeleted = 0;
+      let sidecarsDeleted = 0;
+      for (const s of allSeries) {
+        try {
+          const result = await invoke<{ nfo_deleted: string | null; sidecars_deleted: string[] }>(
+            "clear_nfo",
+            { seriesId: s.id, rootPaths, includeSidecars }
+          );
+          if (result.nfo_deleted) nfoDeleted++;
+          sidecarsDeleted += result.sidecars_deleted.length;
+        } catch (err) {
+          console.warn(`NFO clear failed for ${s.folder_name}:`, err);
+        }
+        setNfoClearProgress((p) => ({ ...p, done: p.done + 1, nfoDeleted, sidecarsDeleted }));
+      }
+      console.log(
+        `NFO batch clear: ${nfoDeleted} NFO deleted, ${sidecarsDeleted} sidecars deleted`
+      );
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      console.error("NFO batch clear:", err);
+    }
+    setNfoClearing(false);
+    setNfoClearConfirmOpen(false);
+  };
+
   // ── Confirm helpers ──────────────────────────────────────────────────────
 
   const ask = (cardId: CardId, title: string, onConfirm: () => void) => {
@@ -230,6 +331,57 @@ export default function SettingsData() {
           </button>
         </div>
         <p style={cardNote}>不影响海报缓存和已拉取的元数据。重新扫描后会再次提示裁决</p>
+      </div>
+
+      {/* NFO 卡片 — 转移自 SettingsMedia */}
+      <div style={cardStyle}>
+        <div style={cardRow}>
+          <div style={{ flex: 1 }}>
+            <span style={cardTitle}>NFO 文件</span>
+            <p style={cardDesc}>
+              写入媒体文件夹的 tvshow.nfo / movie.nfo，可被 Plex / Jellyfin / Kodi 读取
+            </p>
+            {(nfoExporting || nfoClearing) && (
+              <span style={cardMeta}>
+                {nfoExporting && `导出中 ${nfoExportProgress.done} / ${nfoExportProgress.total}`}
+                {nfoClearing && `清除中 ${nfoClearProgress.done} / ${nfoClearProgress.total}`}
+              </span>
+            )}
+            {!nfoExporting && !nfoClearing && nfoExportProgress.total > 0 && (
+              <span style={cardMeta}>
+                上次导出 · {nfoExportProgress.written} 写入，{nfoExportProgress.skipped} 跳过，{nfoExportProgress.failed} 失败
+              </span>
+            )}
+            {!nfoExporting && !nfoClearing && nfoClearProgress.total > 0 && (
+              <span style={cardMeta}>
+                上次清除 · {nfoClearProgress.nfoDeleted} NFO，{nfoClearProgress.sidecarsDeleted} 图片
+              </span>
+            )}
+            {status.nfo && (
+              <span style={{ ...cardMeta, color: "var(--color-accent)" }}>{status.nfo}</span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {(nfoExporting || nfoClearing) && <BreathingDot size={16} />}
+            <button
+              style={btnStyle("default")}
+              onClick={handleExportAllNfo}
+              disabled={nfoExporting || nfoClearing}
+            >
+              {nfoExporting ? "导出中…" : "批量导出"}
+            </button>
+            <button
+              style={btnStyle("warn")}
+              onClick={() => setNfoClearConfirmOpen(true)}
+              disabled={nfoExporting || nfoClearing}
+            >
+              {nfoClearing ? "清除中…" : "清除所有"}
+            </button>
+          </div>
+        </div>
+        <p style={cardNote}>
+          默认仅删除 mochi 写入的 NFO；可勾选“同时删除海报 / 背景图”一并清理 sidecar
+        </p>
       </div>
 
       {/* ── 观看记录 ─────────────────────────────────────────────── */}
@@ -376,6 +528,151 @@ export default function SettingsData() {
                   }
                 >
                   确定
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Clear NFO confirm modal — separate from the generic confirm because
+          it needs a sidecar-deletion opt-in checkbox. */}
+      <AnimatePresence>
+        {nfoClearConfirmOpen && !nfoClearing && (
+          <motion.div
+            key="nfo-clear-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setNfoClearConfirmOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+            }}
+          >
+            <motion.div
+              key="nfo-clear-card"
+              initial={{ opacity: 0, scale: 0.94, y: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: -6 }}
+              transition={spring.gentle}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--color-modal-bg)",
+                borderRadius: 12,
+                padding: 24,
+                maxWidth: 400,
+                border: "1px solid var(--color-surface)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--color-text)",
+                  marginBottom: 10,
+                }}
+              >
+                清除所有 NFO?
+              </div>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
+                }}
+              >
+                会删除所有已导出的 tvshow.nfo / movie.nfo 文件。
+                <br />
+                适用于：分享文件夹、迁移到其他工具、或重新生成元数据。
+              </p>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 20,
+                  cursor: "pointer",
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  background: includeSidecars
+                    ? "rgba(196, 126, 58, 0.08)"
+                    : "var(--color-surface-elevated)",
+                  border: includeSidecars
+                    ? "1px solid var(--color-accent-dim)"
+                    : "1px solid var(--color-surface)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeSidecars}
+                  onChange={(e) => setIncludeSidecars(e.target.checked)}
+                  style={{ marginTop: 2, cursor: "pointer" }}
+                />
+                <span style={{ lineHeight: 1.5 }}>
+                  同时删除海报 / 背景图
+                  <br />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    注意：会一并删除 poster.jpg / fanart.jpg，
+                    <strong>包括您手动放置的文件</strong>——mochi 无法区分来源
+                  </span>
+                </span>
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  onClick={() => setNfoClearConfirmOpen(false)}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    color: "var(--color-text-secondary)",
+                    background: "transparent",
+                    border: "1px solid var(--color-surface)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleClearAllNfo}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    color: includeSidecars
+                      ? "var(--color-modal-bg)"
+                      : "var(--color-accent)",
+                    background: includeSidecars
+                      ? "var(--color-accent)"
+                      : "var(--color-accent-dim)",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  清除
                 </button>
               </div>
             </motion.div>

@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "mochi"
-version = "0.3.4"
+version = "0.3.6"
 dependencies = [
  "quick-xml 0.37.5",
  "regex",

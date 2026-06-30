@@ -10,6 +10,7 @@ import { useBackground } from "../hooks/useBackground";
 import OscBar from "./OscBar";
 import { getTheme } from "../themes/oscThemes";
 import { BreathingDot } from "./BreathingDot";
+import { consumeOscMouseDown } from "../utils/oscDragState";
 
 export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange?: (fs: boolean) => void }) {
   const { episodeId } = useParams<{ episodeId: string }>();
@@ -30,6 +31,18 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   const hasPlayedNaturallyRef = useRef(false);
   const handlePrevRef = useRef<() => void>(() => {});
   const handleNextRef = useRef<() => void>(() => {});
+  // Delays a single click to give dblclick a chance to land first. If a
+  // second click arrives within `CLICK_DBLCLICK_WINDOW`, the pending
+  // toggle is dropped so the dblclick handler runs alone.
+  const clickTimerRef = useRef<number | null>(null);
+  const CLICK_DBLCLICK_WINDOW = 250;
+  // Drag detection: a mousedown that moves beyond DRAG_THRESHOLD pixels
+  // before mouseup is treated as a drag, and the synthesised click is
+  // discarded (no togglePlay). dragStartRef is reset to null after each
+  // click handler runs.
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const wasDraggedRef = useRef(false);
+  const DRAG_THRESHOLD = 5; // px
 
   const mpv = useMpv();
   const cycleSpeedRef = useRef(mpv.cycleSpeed);
@@ -240,6 +253,72 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
   handlePrevRef.current = handlePrev;
   handleNextRef.current = handleNext;
 
+  // ── Video area: distinguish click from left-button drag ─────────
+  // On mousedown we record the start position and arm a window-level
+  // mousemove listener. If the cursor moves beyond DRAG_THRESHOLD
+  // before mouseup, wasDraggedRef flips to true. The synthesised click
+  // then bails out and does not toggle playback. The listener stays
+  // attached for the lifetime of the player — it's a single mousemove
+  // handler that no-ops when dragStartRef is null.
+  const handleVideoAreaMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return; // left button only
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    wasDraggedRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      const start = dragStartRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (dx * dx + dy * dy > DRAG_THRESHOLD * DRAG_THRESHOLD) {
+        wasDraggedRef.current = true;
+      }
+    };
+    window.addEventListener("mousemove", handleMove);
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, []);
+
+  // ── Video area click → toggle play (delayed to coalesce dblclick) ──
+  const handleVideoAreaClick = useCallback(() => {
+    // Drop clicks that were synthesised from a drag that started in the OSC
+    if (consumeOscMouseDown()) {
+      dragStartRef.current = null;
+      wasDraggedRef.current = false;
+      return;
+    }
+    // Drop the click if the press moved beyond the drag threshold — the
+    // user was performing a left-button drag, not a click.
+    if (wasDraggedRef.current) {
+      dragStartRef.current = null;
+      wasDraggedRef.current = false;
+      return;
+    }
+    dragStartRef.current = null;
+    // If a click is already pending, this is the second half of a dblclick
+    // — drop it so the dblclick handler runs alone.
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      return;
+    }
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
+      mpv.togglePlay();
+    }, CLICK_DBLCLICK_WINDOW);
+  }, [mpv.togglePlay]);
+
+  // Clear pending click timer on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current !== null) {
+        window.clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // ── Auto-play next episode ───────────────────────────────────────
   useEffect(() => {
     if (!mpv.duration || mpv.duration <= 0 || !nextEp) return;
@@ -437,12 +516,18 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
       </motion.div>
 
       {/* ── Video area ───────────────────────────────────────────────── */}
-      <div data-mpv-area onDoubleClick={toggleFullscreen} style={{
-        flex: 1, minWidth: 0,
-        background: "transparent", position: "relative",
-        borderRadius: isFullscreen ? 0 : 10, overflow: "hidden",
-        margin: isFullscreen ? 0 : "8px 12px 12px 12px",
-      }}>
+      <div
+        data-mpv-area
+        onMouseDown={handleVideoAreaMouseDown}
+        onClick={handleVideoAreaClick}
+        onDoubleClick={toggleFullscreen}
+        style={{
+          flex: 1, minWidth: 0,
+          background: "transparent", position: "relative",
+          borderRadius: isFullscreen ? 0 : 10, overflow: "hidden",
+          margin: isFullscreen ? 0 : "8px 12px 12px 12px",
+        }}
+      >
         <motion.div
           animate={{ opacity: controlsHidden ? 0 : 1 }}
           transition={{ duration: 0.25 }}

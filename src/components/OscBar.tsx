@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { spring } from "../animations/tokens";
 import type { Track } from "../hooks/useMpv";
 import type { OscTheme } from "../themes/oscThemes";
+import { setOscMouseDown } from "../utils/oscDragState";
 import {
   IconPrev,
   IconPlay,
@@ -65,6 +66,33 @@ export default function OscBar({
   theme,
 }: OscBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // ── OSC drag guard ────────────────────────────────────────────
+  // Track whether a mousedown originated inside the OSC. When the user
+  // drags a knob (timeline or volume) and releases the mouse outside
+  // the OSC, the browser synthesises a click on the video area (the
+  // common ancestor of mousedown/mouseup). We mark this and let
+  // VideoPlayer consume + ignore that click.
+  //
+  // We use the capture phase so internal `e.stopPropagation()` calls
+  // (e.g. in handleKnobMouseDown) don't shadow this listener.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const handleDown = (e: MouseEvent) => {
+      if (el.contains(e.target as Node)) {
+        setOscMouseDown(true);
+      }
+    };
+    const handleUp = () => setOscMouseDown(false);
+    el.addEventListener("mousedown", handleDown, true);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      el.removeEventListener("mousedown", handleDown, true);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
 
   // --- Progress bar drag state ---
   const [isDragging, setIsDragging] = useState(false);
@@ -388,7 +416,7 @@ export default function OscBar({
                 transition={spring.press}
                 style={{
                   left: "50%",
-                  bottom: `${(volume / 130) * 100}%`,
+                  top: `${(1 - volume / 130) * 100}%`,
                   width: 8,
                   height: 8,
                   borderRadius: "50%",
@@ -553,7 +581,9 @@ export default function OscBar({
               boxShadow: "0 8px 32px var(--color-overlay), 0 2px 8px rgba(0,0,0,0.2)",
             }}
           >
+            <style>{`.ep-osc-scroll::-webkit-scrollbar { width: 4px; } .ep-osc-scroll::-webkit-scrollbar-track { background: transparent; margin: 2px 0; } .ep-osc-scroll::-webkit-scrollbar-thumb { background: var(--color-surface-hover); border-radius: 2px; transition: background 0.2s; } .ep-osc-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }`}</style>
             <div
+              className="ep-osc-scroll"
               style={{
                 display: "grid",
                 gridTemplateColumns: `repeat(${EP_COLUMNS}, 56px)`,
@@ -561,6 +591,7 @@ export default function OscBar({
                 maxHeight: 240,
                 overflowY: "auto",
                 scrollbarWidth: "thin",
+                scrollbarColor: "var(--color-surface-hover) transparent",
               }}
             >
               {episodes.map((ep) => {
@@ -663,7 +694,10 @@ export default function OscBar({
 
   return (
     <div
+      ref={rootRef}
       className="absolute bottom-0 left-0 right-0 flex flex-col gap-3.5"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
       style={{
         padding: theme.oscPadding,
         background: theme.oscGradient,
