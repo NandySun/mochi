@@ -1,5 +1,6 @@
 use crate::db::{self, Episode, Person, Series};
 use crate::metadata::{self, MetadataResult};
+use crate::nfo::{self, NfoWriteData, NfoWriteResult};
 use crate::scanner::{self, ScanResult};
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -122,6 +123,7 @@ pub fn scan_library(state: State<AppState>, root_path: String, root_type: Option
             created_at: String::new(),
             updated_at: String::new(),
             fonts_dir: series_scan.fonts_dir.clone(),
+            nfo_exported_at: None,
         };
 
         let series_id = db::upsert_series(&conn, &series).map_err(|e| e.to_string())?;
@@ -714,6 +716,125 @@ fn base64_encode(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Locate a series folder by basename under any of the given roots.
+///
+/// Tries the fast direct-join path first (`root/folder_name`), then a shallow
+/// recursive walk (depth 3) to handle nested layouts like `root/anime/series`.
+/// Returns the first match across all roots, in root order.
+///
+/// This mirrors the pattern used by `rescan_series_folder`, which also takes
+/// `root_paths: Vec<String>` from the frontend and finds series folders.
+fn find_series_folder(roots: &[String], folder_name: &str) -> Option<std::path::PathBuf> {
+    if folder_name.is_empty() {
+        return None;
+    }
+    for root in roots {
+        let root_path = std::path::PathBuf::from(root);
+        // Fast path: root/folder_name
+        let direct = root_path.join(folder_name);
+        if direct.is_dir() {
+            return Some(direct);
+        }
+        // Slow path: recursive walk (depth-limited to 3, enough for any
+        // reasonable mochi layout which is at most root/parent/series)
+        if let Some(found) = find_dir_recursive(&root_path, folder_name, 3) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_dir_recursive(
+    path: &std::path::Path,
+    target_name: &str,
+    depth_remaining: usize,
+) -> Option<std::path::PathBuf> {
+    if depth_remaining == 0 {
+        return None;
+    }
+    let entries = std::fs::read_dir(path).ok()?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name == target_name {
+            return Some(p);
+        }
+        if let Some(found) = find_dir_recursive(&p, target_name, depth_remaining - 1) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Export series metadata as a Kodi NFO file to the series' folder.
+///
+/// # Arguments
+/// - `series_id` — which series to export (looks up title, plot, year, genres, IDs)
+/// - `root_paths` — library root paths from settings. The function joins each
+///   with `series.folder_name` and uses the first one that exists. This
+///   mirrors the pattern in `rescan_series_folder` and avoids forcing the
+///   frontend to do filesystem existence checks.
+/// - `overwrite` — if false, refuse to write if a `tvshow.nfo`/`movie.nfo`
+///   already exists (default behavior; honors user/Emby-placed files).
+///
+/// # Side effects
+/// - Writes `tvshow.nfo` or `movie.nfo` to the folder (atomic via tmp + rename)
+/// - Copies `poster.jpg` / `fanart.jpg` from mochi's cache if the folder
+///   does not already have one (user-placed files always win)
+/// - Stamps `series.nfo_exported_at` with the current SQLite timestamp so
+///   the UI can detect staleness
+#[tauri::command]
+pub fn export_nfo(
+    state: State<AppState>,
+    series_id: i64,
+    root_paths: Vec<String>,
+    overwrite: bool,
+) -> Result<NfoWriteResult, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let series = db::get_series_by_id(&conn, series_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Series {} not found", series_id))?;
+
+    // Locate the series folder: try each root + folder_name until one exists.
+    // Falls back to a shallow recursive walk for nested layouts (e.g. root/anime/series).
+    let folder = find_series_folder(&root_paths, &series.folder_name).ok_or_else(|| {
+        format!(
+            "Could not locate folder for '{}' under any of the {} root path(s)",
+            series.folder_name,
+            root_paths.len()
+        )
+    })?;
+
+    let genres: Vec<String> = series
+        .genres
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    let nfo_data = NfoWriteData {
+        title: series.title.clone(),
+        plot: series.synopsis.clone(),
+        year: series.year,
+        genres,
+        tmdb_id: series.tmdb_id,
+        bangumi_id: series.bangumi_id,
+        series_type: series.series_type.clone(),
+    };
+
+    let poster_src = series.poster_path.as_deref().map(std::path::Path::new);
+    let fanart_src = series.fanart_path.as_deref().map(std::path::Path::new);
+
+    let result = nfo::write_nfo(&folder, &nfo_data, poster_src, fanart_src, overwrite)?;
+
+    db::set_nfo_exported_at(&conn, series_id).map_err(|e| e.to_string())?;
+
+    Ok(result)
 }
 
 /// Return the app version string from tauri.conf.json.

@@ -56,6 +56,10 @@ pub struct Series {
     pub score: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
+    /// ISO timestamp of the last successful NFO export to the series folder.
+    /// `None` if the NFO has never been written by mochi. Drives the
+    /// "stale" indicator in the UI.
+    pub nfo_exported_at: Option<String>,
     /// Absolute path to the series-level `fonts/` directory (case-insensitive).
     /// Used by the player to auto-load subtitle fonts via mpv's `sub-fonts-dir` option.
     /// `None` when the series folder has no `fonts/` subdirectory.
@@ -123,7 +127,8 @@ CREATE TABLE IF NOT EXISTS series (
     score REAL,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    fonts_dir TEXT
+    fonts_dir TEXT,
+    nfo_exported_at TEXT
 )";
 
 const CREATE_EPISODES: &str = "
@@ -241,6 +246,11 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         Ok(()) => {}
         Err(_) => {}
     }
+    // Migration: add nfo_exported_at column to track NFO write-back timing
+    match conn.execute_batch("ALTER TABLE series ADD COLUMN nfo_exported_at TEXT") {
+        Ok(()) => {}
+        Err(_) => { /* column already exists – ignore */ }
+    }
     Ok(conn)
 }
 
@@ -313,7 +323,8 @@ pub fn get_all_series(conn: &Connection) -> Result<Vec<Series>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
                 poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-                year, genres, score, created_at, updated_at, fonts_dir
+                year, genres, score, created_at, updated_at, fonts_dir,
+                nfo_exported_at
          FROM series ORDER BY title",
     )?;
     let rows = stmt.query_map([], |row| series_from_row(row))?;
@@ -325,7 +336,8 @@ pub fn get_series_by_folder(conn: &Connection, folder_name: &str) -> Result<Opti
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
                 poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-                year, genres, score, created_at, updated_at, fonts_dir
+                year, genres, score, created_at, updated_at, fonts_dir,
+                nfo_exported_at
          FROM series WHERE folder_name = ?1",
     )?;
     let mut rows = stmt.query_map(params![folder_name], |row| series_from_row(row))?;
@@ -340,7 +352,8 @@ pub fn get_series_by_id(conn: &Connection, id: i64) -> Result<Option<Series>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
                 poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-                year, genres, score, created_at, updated_at, fonts_dir
+                year, genres, score, created_at, updated_at, fonts_dir,
+                nfo_exported_at
          FROM series WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| series_from_row(row))?;
@@ -369,6 +382,7 @@ fn series_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Series> {
         created_at: row.get(14)?,
         updated_at: row.get(15)?,
         fonts_dir: row.get(16)?,
+        nfo_exported_at: row.get(17)?,
     })
 }
 
@@ -619,6 +633,18 @@ pub fn update_series_type(conn: &Connection, series_id: i64, new_type: &str) -> 
     conn.execute(
         "UPDATE series SET type = ?1, updated_at = datetime('now') WHERE id = ?2",
         params![new_type, series_id],
+    )?;
+    Ok(())
+}
+
+/// Stamp the `nfo_exported_at` column with the current SQLite timestamp.
+/// Called after a successful NFO write to track staleness for the UI:
+/// if `updated_at > nfo_exported_at`, the metadata has changed since the
+/// last export and the user should be prompted to re-export.
+pub fn set_nfo_exported_at(conn: &Connection, series_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET nfo_exported_at = datetime('now') WHERE id = ?1",
+        params![series_id],
     )?;
     Ok(())
 }

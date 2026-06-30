@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-shell";
 import { motion, AnimatePresence } from "framer-motion";
-import type { SeriesScan } from "../types";
+import type { SeriesScan, Series } from "../types";
 import { spring } from "../animations/tokens";
 import { BreathingDot } from "./BreathingDot";
 import { sectionTitle, actionBtn, label } from "../styles/settings";
@@ -60,6 +60,10 @@ export default function SettingsMedia() {
   const [scanning, setScanning] = useState(false);
   const [scanPath, setScanPath] = useState<string | null>(null);
   const [scanCount, setScanCount] = useState(0);
+
+  // NFO batch export state
+  const [exportingAll, setExportingAll] = useState(false);
+  const [exportProgress, setExportProgress] = useState({ done: 0, total: 0, written: 0, skipped: 0, failed: 0 });
 
   // ── Confirm modal state ──────────────────────────────────────────────────
   const [confirmModal, setConfirmModal] = useState<{
@@ -267,6 +271,46 @@ export default function SettingsMedia() {
     });
   };
 
+  const handleExportAllNfo = async () => {
+    setExportingAll(true);
+    setExportProgress({ done: 0, total: 0, written: 0, skipped: 0, failed: 0 });
+    try {
+      const allSeries = await invoke<Series[]>("get_all_series");
+      const rootPaths = rootDirs.map((d) => d.path);
+      setExportProgress((p) => ({ ...p, total: allSeries.length }));
+      let written = 0;
+      let skipped = 0;
+      let failed = 0;
+      for (const s of allSeries) {
+        try {
+          await invoke("export_nfo", {
+            seriesId: s.id,
+            rootPaths,
+            overwrite: false,
+          });
+          written++;
+        } catch (err) {
+          const msg = String(err);
+          // "NFO already exists" is the expected skip case; not a failure
+          if (msg.includes("NFO already exists")) {
+            skipped++;
+          } else {
+            failed++;
+            console.warn(`NFO export failed for ${s.folder_name}:`, err);
+          }
+        }
+        setExportProgress((p) => ({ ...p, done: p.done + 1, written, skipped, failed }));
+      }
+      console.log(
+        `NFO batch: ${written} written, ${skipped} skipped (already exist), ${failed} failed`
+      );
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      console.error("NFO batch export:", err);
+    }
+    setExportingAll(false);
+  };
+
   return (
     <>
       <h2 style={sectionTitle}>媒体库</h2>
@@ -368,6 +412,30 @@ export default function SettingsMedia() {
               </span>
             )}
           </>
+        )}
+      </div>
+
+      {/* NFO batch export */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+        <button
+          style={{ ...actionBtn, opacity: exportingAll ? 0.5 : 1 }}
+          disabled={exportingAll}
+          onClick={handleExportAllNfo}
+        >
+          批量导出 NFO
+        </button>
+        {exportingAll && (
+          <>
+            <BreathingDot size={16} />
+            <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+              {exportProgress.done} / {exportProgress.total}
+            </span>
+          </>
+        )}
+        {!exportingAll && exportProgress.total > 0 && (
+          <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+            完成 · {exportProgress.written} 写入，{exportProgress.skipped} 跳过，{exportProgress.failed} 失败
+          </span>
         )}
       </div>
 

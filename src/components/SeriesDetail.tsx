@@ -171,6 +171,8 @@ export default function SeriesDetail() {
   const typeRef = useRef<HTMLDivElement>(null);
   const [refreshingMeta, setRefreshingMeta] = useState(false);
   const [rescanning, setRescanning] = useState(false);
+  const [exportingNfo, setExportingNfo] = useState(false);
+  const [overwritePromptOpen, setOverwritePromptOpen] = useState(false);
   const [rescanMsg, setRescanMsg] = useState<string | null>(null);
   const [editSearchTerm, setEditSearchTerm] = useState(false);
   const [searchTermInput, setSearchTermInput] = useState("");
@@ -274,6 +276,62 @@ export default function SeriesDetail() {
       console.error("Failed to refresh metadata:", err);
     }
     setRefreshingMeta(false);
+  };
+
+  const handleExportNfo = async (overwrite: boolean) => {
+    setShowKebabMenu(false);
+    setExportingNfo(true);
+    try {
+      // localStorage stores array of {path, type} objects; extract .path for the Rust side.
+      const rootEntries: { path: string }[] = JSON.parse(
+        localStorage.getItem("mochi_root_dirs") ?? "[]"
+      );
+      const rootPaths = rootEntries.map((d) => d.path);
+      const result = await invoke<{ nfo_path: string; sidecar_written: string[] }>(
+        "export_nfo",
+        { seriesId, rootPaths, overwrite }
+      );
+      // Build a human-readable confirmation
+      const sidecarNote =
+        result.sidecar_written.length > 0
+          ? `，并复制 ${result.sidecar_written.length} 张图片`
+          : "";
+      console.log(`NFO exported: ${result.nfo_path}${sidecarNote}`);
+      // Re-fetch to update nfo_exported_at in the UI
+      reload();
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      // Surface the error to the user — silent failures are the worst UX.
+      // The "NFO already exists" branch is a safety net; the normal re-export
+      // path uses the confirm modal below, which sets overwrite=true and
+      // bypasses this error.
+      const msg = String(err);
+      if (msg.includes("NFO already exists")) {
+        alert(`NFO 已存在，未覆盖。\n如需覆盖，请再次点击「重新导出 NFO」并在弹窗中确认。`);
+      } else {
+        alert(`导出 NFO 失败：${msg}`);
+      }
+      console.warn("NFO export:", err);
+    }
+    setExportingNfo(false);
+  };
+
+  // Trigger from the ⋮ menu: skip the overwrite modal for the first export,
+  // show a confirm modal when the NFO already exists. This is the UX that
+  // makes the "重新导出" label meaningful — it asks before clobbering data.
+  const handleExportNfoClick = () => {
+    if (exportingNfo || !series) return;
+    if (series.nfo_exported_at) {
+      setShowKebabMenu(false);
+      setOverwritePromptOpen(true);
+    } else {
+      handleExportNfo(false);
+    }
+  };
+
+  const handleOverwriteConfirm = () => {
+    setOverwritePromptOpen(false);
+    handleExportNfo(true);
   };
 
   const handleRescan = async () => {
@@ -1033,6 +1091,14 @@ export default function SeriesDetail() {
                     }
                   },
                 },
+                {
+                  label: exportingNfo
+                    ? "⟳ 导出 NFO…"
+                    : series.nfo_exported_at
+                    ? "↓ 重新导出 NFO"
+                    : "↓ 导出 NFO",
+                  action: handleExportNfoClick,
+                },
               ].map((item) => (
                 <button
                   key={item.label}
@@ -1095,6 +1161,111 @@ export default function SeriesDetail() {
         onClose={() => setEpisodeModalOpen(false)}
         onPlay={(epId) => navigate(`/play/${epId}`)}
       />
+
+      {/* ── Overwrite NFO confirm modal ──────────────────────────────
+          Triggered when the user clicks "重新导出 NFO" (i.e. a previous
+          export exists). Confirms before clobbering the existing file.
+          Sidecar images (poster.jpg / fanart.jpg) are never re-copied;
+          only the NFO itself is rewritten. */}
+      <AnimatePresence>
+        {overwritePromptOpen && (
+          <motion.div
+            key="overwrite-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={spring.gentle}
+            onClick={() => setOverwritePromptOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+            }}
+          >
+            <motion.div
+              key="overwrite-card"
+              initial={{ opacity: 0, scale: 0.94, y: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: -6 }}
+              transition={spring.gentle}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--color-modal-bg)",
+                borderRadius: 12,
+                padding: 24,
+                maxWidth: 360,
+                border: "1px solid var(--color-surface)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--color-text)",
+                  marginBottom: 8,
+                }}
+              >
+                覆盖 NFO?
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 20,
+                  lineHeight: 1.6,
+                }}
+              >
+                该系列已有 NFO 文件。覆盖会替换现有内容。
+                <br />
+                海报 / 背景图（poster.jpg / fanart.jpg）不会被重新复制。
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  onClick={() => setOverwritePromptOpen(false)}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    color: "var(--color-text-secondary)",
+                    background: "transparent",
+                    border: "1px solid var(--color-surface)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleOverwriteConfirm}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    color: "var(--color-modal-bg)",
+                    background: "var(--color-accent)",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  覆盖导出
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

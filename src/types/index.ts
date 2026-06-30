@@ -16,6 +16,10 @@ export interface Series {
   score: number | null; // 0–10 community score (native to Bangumi and TMDB)
   created_at: string;
   updated_at: string;
+  /// ISO timestamp of the last successful NFO export to the series folder.
+  /// `null` if the NFO has never been written by mochi. Drives the
+  /// "stale" indicator in the series detail ⋮ menu.
+  nfo_exported_at: string | null;
 }
 
 /// Matches Rust Episode struct

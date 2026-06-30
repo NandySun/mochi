@@ -175,6 +175,7 @@ pub fn run() {
             commands::fetch_episode_metadata,
             commands::refresh_single_series,
             commands::rescan_series_folder,
+            commands::export_nfo,
             commands::get_app_version,
             commands::get_close_behavior,
             commands::set_close_behavior,
