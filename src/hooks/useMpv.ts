@@ -24,6 +24,27 @@ const OBSERVED_PROPERTIES = [
   ["duration", "double", "none"],
 ] as const satisfies MpvObservableProperty[];
 
+/**
+ * Escape a value for inclusion in an mpv options string.
+ *
+ * mpv's options parser uses `=` as the key/value separator and treats spaces
+ * and commas as option delimiters. Any value containing `[\s,"=]` must be
+ * wrapped in double quotes; embedded double quotes are escaped with a backslash.
+ *
+ * Examples:
+ *   "C:/fonts"                  -> "C:/fonts"
+ *   "D:/Series/永生之酒/fonts"  -> "D:/Series/永生之酒/fonts"
+ *   'D:\path with "quotes"'     -> '"D:\\path with \"quotes\""'
+ */
+function escapeMpvOptionValue(value: string): string {
+  if (/[\s,"=]/.test(value)) {
+    return `"${value.replace(/"/g, '\\"')}"`;
+  }
+  return value;
+}
+
+export { escapeMpvOptionValue };
+
 // ── Module-level singleton init ──────────────────────────────────────────
 // mpv is initialised once and never destroyed until the app exits.
 // Destroying/recreating the native mpv context on every detail-page unmount
@@ -121,8 +142,24 @@ export function useMpv() {
     [],
   );
 
-  const loadFile = useCallback(async (filePath: string) => {
-    await command("loadfile", [filePath]);
+  const loadFile = useCallback(async (filePath: string, options?: string[]) => {
+    // mpv loadfile positional args: [url, mode?, index?, options?] (mpv 0.38+).
+    // - mode: "replace" (default) | "append" | "append-play" | "insert-at" | ...
+    // - index: only used by "insert-at" mode; -1 means "append to end".
+    //   Required positionally when options is provided, or mpv parses the
+    //   options string as an index and fails with "Failed to execute command".
+    // - options: comma- or newline-separated key=value list
+    //   (e.g. "sub-fonts-dir=C:/path/to/fonts")
+    // We pass "-1" as index placeholder when caller provides options.
+    if (options && options.length > 0) {
+      const [mode, opts, ...rest] = options;
+      const args = [filePath, mode, "-1", opts, ...rest].filter(
+        (a): a is string => typeof a === "string" && a.length > 0
+      );
+      await command("loadfile", args);
+    } else {
+      await command("loadfile", [filePath]);
+    }
   }, []);
 
   const togglePlay = useCallback(async () => {

@@ -158,6 +158,9 @@ pub struct SeriesScan {
     /// Absolute path to the series folder (for .mochi write-back).
     /// Empty string for flat-mode virtual series (use .mochi/ instead).
     pub folder_path: String,
+    /// Absolute path to the series-level `fonts/` directory (case-insensitive).
+    /// `None` when no `fonts/` subdirectory exists.
+    pub fonts_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -561,6 +564,8 @@ fn build_series_scan(
         return Ok(None);
     }
 
+    let fonts_dir = find_fonts_dir(dir_path);
+
     Ok(Some(SeriesScan {
         folder_name: folder_name.to_string(),
         display_name,
@@ -570,7 +575,29 @@ fn build_series_scan(
         series_type_hint: resolved_type,
         episodes,
         folder_path: dir_path.to_string_lossy().to_string(),
+        fonts_dir,
     }))
+}
+
+/// Find the series-level fonts directory. Case-insensitive match on `fonts` (direct
+/// subdirectory only). Returns the absolute path if found, `None` otherwise.
+///
+/// Used by both initial scan and rescan paths so the DB stays in sync with the
+/// filesystem — when the user removes the `fonts/` directory, the next scan
+/// overwrites the stored path to `None`.
+pub(crate) fn find_fonts_dir(dir_path: &Path) -> Option<String> {
+    std::fs::read_dir(dir_path).ok()?.find_map(|entry| {
+        let entry = entry.ok()?;
+        if !entry.file_type().ok()?.is_dir() {
+            return None;
+        }
+        let name = entry.file_name().to_str()?.to_string();
+        if name.eq_ignore_ascii_case("fonts") {
+            Some(entry.path().to_string_lossy().to_string())
+        } else {
+            None
+        }
+    })
 }
 
 pub fn scan_library(root_path: &str, root_type: Option<&str>) -> Result<ScanResult, String> {
@@ -944,6 +971,7 @@ fn cluster_flat_files(
             series_type_hint: resolved_type,
             episodes,
             folder_path: String::new(), // flat mode: no real folder, use .mochi/
+            fonts_dir: None,             // flat mode: no series folder, no fonts/
         });
     }
 

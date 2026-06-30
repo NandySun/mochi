@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { Series, Episode } from "../types";
 import { useMpv } from "../hooks/useMpv";
+import { escapeMpvOptionValue } from "../hooks/useMpv";
 import { useFullscreen } from "../hooks/useFullscreen";
 import { useBackground } from "../hooks/useBackground";
 import OscBar from "./OscBar";
@@ -89,14 +90,25 @@ export default function VideoPlayer({ onFullscreenChange }: { onFullscreenChange
           mpvReady.current = true;
         }
 
-        const filePath = await invoke<string | null>("get_episode_path", { episodeId: ep.id });
-        if (!filePath) {
+        const pathInfo = await invoke<{ file_path: string; fonts_dir: string | null } | null>(
+          "get_episode_path", { episodeId: ep.id }
+        );
+        if (!pathInfo) {
           if (!cancelled) { setErrorMsg("文件路径未找到"); setLoading(false); }
           return;
         }
+        const { file_path: filePath, fonts_dir: fontsDir } = pathInfo;
 
         mpv.observe(ep.id, ep.watched_progress);
-        await mpv.loadFile(filePath);
+
+        // Inject sub-fonts-dir at loadfile time so libass can find fonts in the
+        // series-level fonts/ directory. Falls back to current behavior (no
+        // sub-fonts-dir) when the series has no fonts/ directory or the option
+        // is not supported by the embedded mpv build.
+        const options = fontsDir
+          ? ["replace", `sub-fonts-dir=${escapeMpvOptionValue(fontsDir)}`]
+          : undefined;
+        await mpv.loadFile(filePath, options);
         if (cancelled) return;
 
         // Load external subtitle files (parse JSON string from backend)

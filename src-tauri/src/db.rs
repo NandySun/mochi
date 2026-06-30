@@ -55,6 +55,10 @@ pub struct Series {
     pub score: Option<i32>,
     pub created_at: String,
     pub updated_at: String,
+    /// Absolute path to the series-level `fonts/` directory (case-insensitive).
+    /// Used by the player to auto-load subtitle fonts via mpv's `sub-fonts-dir` option.
+    /// `None` when the series folder has no `fonts/` subdirectory.
+    pub fonts_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,7 +121,8 @@ CREATE TABLE IF NOT EXISTS series (
     genres TEXT,
     score INTEGER,
     created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    fonts_dir TEXT
 )";
 
 const CREATE_EPISODES: &str = "
@@ -198,6 +203,11 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         Ok(()) => {}
         Err(_) => {}
     }
+    // Migration: add fonts_dir column for subtitle font auto-loading (v0.3.3)
+    match conn.execute_batch("ALTER TABLE series ADD COLUMN fonts_dir TEXT") {
+        Ok(()) => {}
+        Err(_) => { /* column already exists – ignore */ }
+    }
     // Migration: add overview column for episode descriptions
     match conn.execute_batch("ALTER TABLE episodes ADD COLUMN overview TEXT") {
         Ok(()) => {}
@@ -224,8 +234,8 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
         "INSERT INTO series (
             title, folder_name, display_name, search_term, type,
             poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-            year, genres, score, created_at, updated_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
+            year, genres, score, created_at, updated_at, fonts_dir
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
         ON CONFLICT(folder_name) DO UPDATE SET
             title=excluded.title,
             display_name=excluded.display_name,
@@ -239,6 +249,7 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
             year=COALESCE(excluded.year, series.year),
             genres=COALESCE(excluded.genres, series.genres),
             score=COALESCE(excluded.score, series.score),
+            fonts_dir=excluded.fonts_dir,
             updated_at=datetime('now')
         RETURNING id",
         params![
@@ -257,10 +268,26 @@ pub fn upsert_series(conn: &Connection, series: &Series) -> Result<i64> {
             series.score,
             series.created_at,
             series.updated_at,
+            series.fonts_dir,
         ],
         |row| row.get(0),
     )
     .map_err(Into::into)
+}
+
+/// Update the `fonts_dir` column for a single series (used by `rescan_series_folder`
+/// which doesn't go through `upsert_series`). Sets `None` to clear the path
+/// (e.g., when the user removed the `fonts/` directory).
+pub fn update_series_fonts_dir(
+    conn: &Connection,
+    series_id: i64,
+    fonts_dir: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET fonts_dir = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![fonts_dir, series_id],
+    )?;
+    Ok(())
 }
 
 /// Return all series ordered by title.
@@ -268,7 +295,7 @@ pub fn get_all_series(conn: &Connection) -> Result<Vec<Series>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
                 poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-                year, genres, score, created_at, updated_at
+                year, genres, score, created_at, updated_at, fonts_dir
          FROM series ORDER BY title",
     )?;
     let rows = stmt.query_map([], |row| series_from_row(row))?;
@@ -280,7 +307,7 @@ pub fn get_series_by_folder(conn: &Connection, folder_name: &str) -> Result<Opti
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
                 poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-                year, genres, score, created_at, updated_at
+                year, genres, score, created_at, updated_at, fonts_dir
          FROM series WHERE folder_name = ?1",
     )?;
     let mut rows = stmt.query_map(params![folder_name], |row| series_from_row(row))?;
@@ -295,7 +322,7 @@ pub fn get_series_by_id(conn: &Connection, id: i64) -> Result<Option<Series>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, folder_name, display_name, search_term, type,
                 poster_path, fanart_path, bangumi_id, tmdb_id, synopsis,
-                year, genres, score, created_at, updated_at
+                year, genres, score, created_at, updated_at, fonts_dir
          FROM series WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| series_from_row(row))?;
@@ -323,6 +350,7 @@ fn series_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Series> {
         score: row.get(13)?,
         created_at: row.get(14)?,
         updated_at: row.get(15)?,
+        fonts_dir: row.get(16)?,
     })
 }
 
@@ -613,6 +641,20 @@ pub fn update_watch_progress(
 pub fn get_episode_path(conn: &Connection, episode_id: i64) -> Result<Option<String>> {
     conn.query_row(
         "SELECT file_path FROM episodes WHERE id = ?1",
+        params![episode_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+/// Return the series-level `fonts_dir` for an episode's parent series.
+/// Returns `None` if the episode doesn't exist or its series has no `fonts/` directory.
+pub fn get_episode_fonts_dir(conn: &Connection, episode_id: i64) -> Result<Option<String>> {
+    conn.query_row(
+        "SELECT s.fonts_dir FROM episodes e
+         JOIN series s ON e.series_id = s.id
+         WHERE e.id = ?1",
         params![episode_id],
         |row| row.get(0),
     )

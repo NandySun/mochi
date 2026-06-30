@@ -121,6 +121,7 @@ pub fn scan_library(state: State<AppState>, root_path: String, root_type: Option
             score: None,
             created_at: String::new(),
             updated_at: String::new(),
+            fonts_dir: series_scan.fonts_dir.clone(),
         };
 
         let series_id = db::upsert_series(&conn, &series).map_err(|e| e.to_string())?;
@@ -240,13 +241,26 @@ pub fn update_watch_progress(
     db::update_watch_progress(&conn, episode_id, progress_secs).map_err(|e| e.to_string())
 }
 
+/// Player-facing episode path info: file path + optional series fonts directory.
+/// The frontend uses `fonts_dir` to inject mpv's `sub-fonts-dir` option at loadfile time.
+#[derive(serde::Serialize)]
+pub struct EpisodePathInfo {
+    pub file_path: String,
+    pub fonts_dir: Option<String>,
+}
+
 #[tauri::command]
 pub fn get_episode_path(
     state: State<AppState>,
     episode_id: i64,
-) -> Result<Option<String>, String> {
+) -> Result<Option<EpisodePathInfo>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::get_episode_path(&conn, episode_id).map_err(|e| e.to_string())
+    let file_path = db::get_episode_path(&conn, episode_id).map_err(|e| e.to_string())?;
+    let fonts_dir = db::get_episode_fonts_dir(&conn, episode_id).map_err(|e| e.to_string())?;
+    Ok(file_path.map(|fp| EpisodePathInfo {
+        file_path: fp,
+        fonts_dir,
+    }))
 }
 
 // ── Phase 2: Metadata ────────────────────────────────────────────────────────
@@ -981,6 +995,13 @@ pub fn rescan_series_folder(
         };
         db::upsert_episode(&conn, &episode).map_err(|e| e.to_string())?;
     }
+
+    // Phase 4.5: Re-detect fonts directory (rescan may pick up a newly added
+    // or removed fonts/ folder). Update DB unconditionally so the path stays
+    // in sync with the filesystem.
+    let fonts_dir = scanner::find_fonts_dir(&dir_path);
+    db::update_series_fonts_dir(&conn, series_id, fonts_dir.as_deref())
+        .map_err(|e| e.to_string())?;
 
     // Try NFO import — only fills fields that are still NULL
     if let Some(nfo) = crate::nfo::read_nfo(&dir_path) {
