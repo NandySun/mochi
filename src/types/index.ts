@@ -13,7 +13,7 @@ export interface Series {
   synopsis: string | null;
   year: number | null;
   genres: string | null; // JSON array string
-  score: number | null; // 0–100 (Bangumi score 0-10 scaled ×10; TMDB vote_average scaled ×10)
+  score: number | null; // 0–10 community score (native to Bangumi and TMDB)
   created_at: string;
   updated_at: string;
 }

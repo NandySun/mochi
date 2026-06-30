@@ -52,7 +52,8 @@ pub struct Series {
     pub synopsis: Option<String>,
     pub year: Option<i32>,
     pub genres: Option<String>, // JSON array string
-    pub score: Option<i32>,
+    /// Community score 0–10 (native to Bangumi and TMDB).
+    pub score: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
     /// Absolute path to the series-level `fonts/` directory (case-insensitive).
@@ -119,7 +120,7 @@ CREATE TABLE IF NOT EXISTS series (
     synopsis TEXT,
     year INTEGER,
     genres TEXT,
-    score INTEGER,
+    score REAL,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     fonts_dir TEXT
@@ -179,9 +180,26 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
     conn.execute_batch(CREATE_PERSON)?;
     conn.execute_batch(CREATE_SERIES_CAST)?;
     // Migration: add score column if not present (safe on both fresh and existing DBs)
-    match conn.execute_batch("ALTER TABLE series ADD COLUMN score INTEGER") {
+    match conn.execute_batch("ALTER TABLE series ADD COLUMN score REAL") {
         Ok(()) => {}
         Err(_) => { /* column already exists – ignore */ }
+    }
+    // Migration v0.3.5: convert legacy 0-100 score values to 0-10.
+    // The ×10 scaling was inherited from the abandoned AniList source (native 0-100);
+    // it became dead weight once Bangumi replaced AniList, but persisted because schema
+    // changes are high-friction. PRAGMA user_version is SQLite's built-in version
+    // counter, used here for idempotent one-shot execution. If the migration count
+    // grows past a handful, promote this to a dedicated `_migrations` table.
+    let user_version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap_or(0);
+    if user_version < 1 {
+        // Cast to REAL handles both INTEGER and REAL source columns; /10.0 converts
+        // legacy 0-100 values (e.g. 85 → 8.5) to the new 0-10 range. NULL stays NULL.
+        conn.execute_batch(
+            "UPDATE series SET score = CAST(score AS REAL) / 10.0 WHERE score IS NOT NULL"
+        )?;
+        conn.execute_batch("PRAGMA user_version = 1")?;
     }
     // Migration: rename anilist_id to bangumi_id (Phase 2 cleanup)
     match conn.execute_batch("ALTER TABLE series RENAME COLUMN anilist_id TO bangumi_id") {
@@ -533,8 +551,8 @@ pub fn get_series_cast(conn: &Connection, series_id: i64) -> Result<Vec<(Person,
 
 // ── Metadata helpers (Phase 2) ──────────────────────────────────────────────
 
-/// Update series metadata after a fetch from AniList or TMDB.
-pub fn update_series_metadata(conn: &Connection, series_id: i64, title: &str, series_type: &str, bangumi_id: Option<i64>, tmdb_id: Option<i64>, synopsis: Option<&str>, year: Option<i32>, genres: Option<&str>, poster_path: Option<&str>, fanart_path: Option<&str>, score: Option<i32>) -> Result<()> {
+/// Update series metadata after a fetch from Bangumi or TMDB.
+pub fn update_series_metadata(conn: &Connection, series_id: i64, title: &str, series_type: &str, bangumi_id: Option<i64>, tmdb_id: Option<i64>, synopsis: Option<&str>, year: Option<i32>, genres: Option<&str>, poster_path: Option<&str>, fanart_path: Option<&str>, score: Option<f64>) -> Result<()> {
     conn.execute(
         "UPDATE series
          SET title = ?1,

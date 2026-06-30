@@ -534,7 +534,7 @@ export default function SeriesDetail() {
             >
               {series.score != null && (
                 <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
-                  {(series.score / 10).toFixed(1)}
+                  {series.score.toFixed(1)}
                 </span>
               )}
               <span style={{ opacity: 0.3 }}>·</span>

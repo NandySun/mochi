@@ -65,9 +65,8 @@ pub struct MetadataResult {
     pub poster_path: Option<String>,
     /// Local cache path for the banner/backdrop image.
     pub fanart_path: Option<String>,
-    /// Aggregated score 0–100 (Bangumi score 0-10 scaled ×10;
-    /// TMDB vote_average 0-10 is scaled ×10 before storage).
-    pub score: Option<i32>,
+    /// Community score 0–10 (native to Bangumi and TMDB).
+    pub score: Option<f64>,
     /// Human-readable diagnostic message (e.g. image download status).
     pub diagnostic: Option<String>,
     /// Set to true when both Bangumi and TMDB returned results for an unknown series,
@@ -223,7 +222,7 @@ async fn try_bangumi(
         Ok(detail) => {
             // Enrich with rating
             if let Some(ref rating) = detail.rating {
-                result.score = rating.score.map(|s| (s * 10.0).round() as i32);
+                result.score = rating.score;
             }
             // Enrich with genres (top 8 tags by count)
             if !detail.tags.is_empty() {
@@ -402,7 +401,7 @@ async fn build_bangumi_result(
         genres,
         poster_path,
         fanart_path: None,
-        score: detail.rating.as_ref().and_then(|r| r.score).map(|s| (s * 10.0).round() as i32),
+        score: detail.rating.as_ref().and_then(|r| r.score),
         diagnostic,
         ambiguous: false,
     })
@@ -451,7 +450,7 @@ async fn build_bangumi_search_result(
     };
 
     // Score from search result rating (available with responseGroup=medium)
-    let score = media.rating.as_ref().and_then(|r| r.score).map(|s| (s * 10.0).round() as i32);
+    let score = media.rating.as_ref().and_then(|r| r.score);
 
     Ok(MetadataResult {
         title,
@@ -530,7 +529,7 @@ async fn build_tmdb_result(
         genres,
         poster_path,
         fanart_path,
-        score: result.vote_average.map(|v| (v * 10.0).round() as i32),
+        score: result.vote_average,
         diagnostic: None,
         ambiguous: false,
     })
