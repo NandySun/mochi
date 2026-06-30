@@ -651,7 +651,7 @@ pub fn get_episode_path(conn: &Connection, episode_id: i64) -> Result<Option<Str
 /// Return the series-level `fonts_dir` for an episode's parent series.
 /// Returns `None` if the episode doesn't exist or its series has no `fonts/` directory.
 pub fn get_episode_fonts_dir(conn: &Connection, episode_id: i64) -> Result<Option<String>> {
-    conn.query_row(
+    let raw: Option<Option<String>> = conn.query_row(
         "SELECT s.fonts_dir FROM episodes e
          JOIN series s ON e.series_id = s.id
          WHERE e.id = ?1",
@@ -659,7 +659,10 @@ pub fn get_episode_fonts_dir(conn: &Connection, episode_id: i64) -> Result<Optio
         |row| row.get(0),
     )
     .optional()
-    .map_err(Into::into)
+    .map_err(|e| DbError::Sqlite(e))?;
+    // raw = None (episode 缺失) | Some(None) (fonts_dir 是 NULL) | Some(Some(s)) (有值)
+    // flatten() 把 Some(None) 也归为 None，episode 缺失和有值都正确
+    Ok(raw.flatten())
 }
 
 /// Return the most recently watched episode with progress > 0 and not completed.
