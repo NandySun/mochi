@@ -25,6 +25,9 @@ pub struct NfoData {
 /// Filenames to check (case-insensitive on Windows, but we match exactly).
 const NFO_NAMES: &[&str] = &["tvshow.nfo", "movie.nfo"];
 
+/// File extensions to consider for sidecar images (Kodi convention).
+const SIDECAR_EXTS: &[&str] = &["jpg", "png"];
+
 /// Try to read and parse an NFO file from the given directory.
 /// Returns `None` if no recognized NFO file exists or parsing fails.
 pub fn read_nfo(dir_path: &Path) -> Option<NfoData> {
@@ -211,6 +214,58 @@ pub fn write_nfo(
 fn sidecar_exists(dir: &Path, base: &str) -> bool {
     dir.join(format!("{}.jpg", base)).is_file()
         || dir.join(format!("{}.png", base)).is_file()
+}
+
+/// Outcome of a `clear_nfo` call.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ClearNfoResult {
+    /// Name of the deleted NFO file (e.g. `"tvshow.nfo"`), or `None` if no
+    /// NFO existed in the folder.
+    pub nfo_deleted: Option<String>,
+    /// Names of deleted sidecar files (e.g. `["poster.jpg", "fanart.jpg"]`).
+    pub sidecars_deleted: Vec<String>,
+}
+
+/// Delete the NFO file (and optionally the sidecar images) from a series folder.
+///
+/// # Idempotency
+/// Missing files are silently skipped — calling this on a folder with no
+/// NFO (and no sidecars) returns an empty result without error. This makes
+/// the function safe to call from batch handlers without per-file guards.
+///
+/// # Sidecar caveat
+/// When `include_sidecars` is `true`, the function deletes `poster.{jpg,png}`
+/// and `fanart.{jpg,png}` unconditionally — mochi does not track which
+/// sidecars it wrote vs. which the user placed, so user-placed files in
+/// those names will also be removed. The caller is responsible for warning
+/// the user about this before the batch runs.
+pub fn clear_nfo(dir: &Path, include_sidecars: bool) -> Result<ClearNfoResult, String> {
+    let mut result = ClearNfoResult::default();
+
+    for name in NFO_NAMES {
+        let path = dir.join(name);
+        if path.is_file() {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("delete {}: {e}", name))?;
+            result.nfo_deleted = Some(name.to_string());
+            break;
+        }
+    }
+
+    if include_sidecars {
+        for base in &["poster", "fanart"] {
+            for ext in SIDECAR_EXTS {
+                let path = dir.join(format!("{}.{}", base, ext));
+                if path.is_file() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| format!("delete {}.{}: {e}", base, ext))?;
+                    result.sidecars_deleted.push(format!("{}.{}", base, ext));
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 fn build_nfo_xml(data: &NfoWriteData) -> String {
@@ -474,5 +529,72 @@ mod tests {
         assert_eq!(read_back.year, Some(2024));
         let genres: Vec<String> = serde_json::from_str(read_back.genres.as_deref().unwrap()).unwrap();
         assert_eq!(genres, vec!["Action", "Drama"]);
+    }
+
+    // ── clear_nfo tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_clear_nfo_removes_nfo_only() {
+        let dir = fresh_dir("clear_nfo_only");
+        let data = NfoWriteData {
+            title: "Clear Me".to_string(),
+            series_type: "tv".to_string(),
+            ..Default::default()
+        };
+        write_nfo(&dir, &data, None, None, false).unwrap();
+        // Manually create a sidecar so we can verify it survives
+        std::fs::write(dir.join("poster.jpg"), b"fake jpg").unwrap();
+
+        let result = clear_nfo(&dir, false).unwrap();
+        assert_eq!(result.nfo_deleted.as_deref(), Some("tvshow.nfo"));
+        assert!(result.sidecars_deleted.is_empty());
+
+        assert!(!dir.join("tvshow.nfo").exists());
+        assert!(dir.join("poster.jpg").exists());  // sidecar preserved
+    }
+
+    #[test]
+    fn test_clear_nfo_with_sidecars() {
+        let dir = fresh_dir("clear_with_sidecars");
+        let data = NfoWriteData {
+            title: "Clear All".to_string(),
+            series_type: "tv".to_string(),
+            ..Default::default()
+        };
+        write_nfo(&dir, &data, None, None, false).unwrap();
+        std::fs::write(dir.join("poster.jpg"), b"jpg").unwrap();
+        std::fs::write(dir.join("fanart.png"), b"png").unwrap();
+        std::fs::write(dir.join("backdrop.jpg"), b"kept").unwrap();  // not a target
+
+        let result = clear_nfo(&dir, true).unwrap();
+        assert_eq!(result.nfo_deleted.as_deref(), Some("tvshow.nfo"));
+        assert!(result.sidecars_deleted.contains(&"poster.jpg".to_string()));
+        assert!(result.sidecars_deleted.contains(&"fanart.png".to_string()));
+        assert_eq!(result.sidecars_deleted.len(), 2);
+
+        assert!(!dir.join("tvshow.nfo").exists());
+        assert!(!dir.join("poster.jpg").exists());
+        assert!(!dir.join("fanart.png").exists());
+        assert!(dir.join("backdrop.jpg").exists());  // non-target untouched
+    }
+
+    #[test]
+    fn test_clear_nfo_idempotent() {
+        let dir = fresh_dir("clear_idempotent");
+        // Empty dir, no NFO, no sidecars
+        let result = clear_nfo(&dir, true).unwrap();
+        assert!(result.nfo_deleted.is_none());
+        assert!(result.sidecars_deleted.is_empty());
+        // Calling again on dir that previously had NFO
+        let data = NfoWriteData {
+            title: "Twice".to_string(),
+            series_type: "tv".to_string(),
+            ..Default::default()
+        };
+        write_nfo(&dir, &data, None, None, false).unwrap();
+        clear_nfo(&dir, false).unwrap();
+        let result = clear_nfo(&dir, true).unwrap();  // should be no-op
+        assert!(result.nfo_deleted.is_none());
+        assert!(result.sidecars_deleted.is_empty());
     }
 }

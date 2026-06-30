@@ -837,6 +837,35 @@ pub fn export_nfo(
     Ok(result)
 }
 
+/// Delete the NFO file (and optionally the sidecar images) for one series.
+/// Resets `nfo_exported_at` so the UI label switches from "重新导出" back
+/// to "导出". See `nfo::clear_nfo` for the sidecar caveat.
+#[tauri::command]
+pub fn clear_nfo(
+    state: State<AppState>,
+    series_id: i64,
+    root_paths: Vec<String>,
+    include_sidecars: bool,
+) -> Result<nfo::ClearNfoResult, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let series = db::get_series_by_id(&conn, series_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Series {} not found", series_id))?;
+
+    let folder = find_series_folder(&root_paths, &series.folder_name).ok_or_else(|| {
+        format!(
+            "Could not locate folder for '{}' under any of the {} root path(s)",
+            series.folder_name,
+            root_paths.len()
+        )
+    })?;
+
+    let result = nfo::clear_nfo(&folder, include_sidecars)?;
+    db::clear_nfo_exported_at(&conn, series_id).map_err(|e| e.to_string())?;
+    Ok(result)
+}
+
 /// Return the app version string from tauri.conf.json.
 #[tauri::command]
 pub fn get_app_version(app: tauri::AppHandle) -> String {

@@ -649,6 +649,18 @@ pub fn set_nfo_exported_at(conn: &Connection, series_id: i64) -> Result<()> {
     Ok(())
 }
 
+/// Reset the `nfo_exported_at` column to NULL for a series.
+/// Called after `clear_nfo` so the UI label switches from
+/// "↓ 重新导出 NFO" back to "↓ 导出 NFO" and the staleness indicator
+/// (once it exists) clears.
+pub fn clear_nfo_exported_at(conn: &Connection, series_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET nfo_exported_at = NULL WHERE id = ?1",
+        params![series_id],
+    )?;
+    Ok(())
+}
+
 /// Clear all metadata IDs and search_term overrides from the DB.
 /// Preserves series.type (user-set type). Used by "clear all verdicts".
 pub fn clear_all_metadata_ids(conn: &Connection) -> Result<()> {
