@@ -69,16 +69,16 @@ async fn fetch_series_metadata(
     proxy_url: Option<&str>,
     force: bool,
 ) -> Result<MetadataResult, String> {
-    let mut result = if let Some(bid) = bangumi_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
-        metadata::fetch_by_bangumi_id(bid as i32, proxy_url, force).await?
-    } else if series_type != "anime" {
-        if let Some(tid) = tmdb_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
-            let media_type = if series_type == "movie" { "movie" } else { "tv" };
-            let key = tmdb_api_key.ok_or("TMDB API key required for ID fetch")?;
-            metadata::fetch_by_tmdb_id(tid, media_type, key, "zh-CN", proxy_url, force).await?
+    let mut result = if series_type == "anime" {
+        if let Some(bid) = bangumi_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
+            metadata::fetch_by_bangumi_id(bid as i32, proxy_url, force).await?
         } else {
             metadata::fetch_metadata(search_term, series_type, tmdb_api_key, proxy_url, force).await?
         }
+    } else if let Some(tid) = tmdb_id.and_then(|id| if id > 0 { Some(id) } else { None }) {
+        let media_type = if series_type == "movie" { "movie" } else { "tv" };
+        let key = tmdb_api_key.ok_or("TMDB API key required for ID fetch")?;
+        metadata::fetch_by_tmdb_id(tid, media_type, key, "zh-CN", proxy_url, force).await?
     } else {
         metadata::fetch_metadata(search_term, series_type, tmdb_api_key, proxy_url, force).await?
     };
