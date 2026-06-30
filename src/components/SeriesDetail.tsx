@@ -173,6 +173,9 @@ export default function SeriesDetail() {
   const [rescanning, setRescanning] = useState(false);
   const [exportingNfo, setExportingNfo] = useState(false);
   const [overwritePromptOpen, setOverwritePromptOpen] = useState(false);
+  const [clearingSeriesNfo, setClearingSeriesNfo] = useState(false);
+  const [clearSeriesPromptOpen, setClearSeriesPromptOpen] = useState(false);
+  const [includeSidecars, setIncludeSidecars] = useState(false);
   const [rescanMsg, setRescanMsg] = useState<string | null>(null);
   const [editSearchTerm, setEditSearchTerm] = useState(false);
   const [searchTermInput, setSearchTermInput] = useState("");
@@ -332,6 +335,37 @@ export default function SeriesDetail() {
   const handleOverwriteConfirm = () => {
     setOverwritePromptOpen(false);
     handleExportNfo(true);
+  };
+
+  // Per-series NFO clear: opens a confirm modal with sidecar opt-in.
+  // Mirrors the batch "清除所有 NFO" in SettingsMedia, but scoped to this
+  // one series. Resets nfo_exported_at so the menu label flips from
+  // "重新导出 NFO" back to "导出 NFO".
+  const handleClearSeriesNfo = async (includeSidecarsArg: boolean) => {
+    setClearSeriesPromptOpen(false);
+    setClearingSeriesNfo(true);
+    try {
+      const rootEntries: { path: string }[] = JSON.parse(
+        localStorage.getItem("mochi_root_dirs") ?? "[]"
+      );
+      const rootPaths = rootEntries.map((d) => d.path);
+      const result = await invoke<{ nfo_deleted: string | null; sidecars_deleted: string[] }>(
+        "clear_nfo",
+        { seriesId, rootPaths, includeSidecars: includeSidecarsArg }
+      );
+      const note =
+        (result.nfo_deleted ? "已删除 NFO" : "无 NFO 可删") +
+        (result.sidecars_deleted.length > 0
+          ? `，并删除 ${result.sidecars_deleted.length} 张图片`
+          : "");
+      console.log(`NFO clear: ${note}`);
+      reload();
+      window.dispatchEvent(new CustomEvent("mochi:data-changed"));
+    } catch (err) {
+      alert(`清除 NFO 失败：${String(err)}`);
+      console.warn("NFO clear:", err);
+    }
+    setClearingSeriesNfo(false);
   };
 
   const handleRescan = async () => {
@@ -1099,6 +1133,14 @@ export default function SeriesDetail() {
                     : "↓ 导出 NFO",
                   action: handleExportNfoClick,
                 },
+                {
+                  label: clearingSeriesNfo ? "⟳ 清除 NFO…" : "✕ 清除 NFO",
+                  action: () => {
+                    if (clearingSeriesNfo) return;
+                    setShowKebabMenu(false);
+                    setClearSeriesPromptOpen(true);
+                  },
+                },
               ].map((item) => (
                 <button
                   key={item.label}
@@ -1260,6 +1302,152 @@ export default function SeriesDetail() {
                   }}
                 >
                   覆盖导出
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Clear NFO confirm modal (per-series) ──────────────────────────
+          Sibling of the overwrite modal; same visual language. Sidecar
+          opt-in is reused from SettingsMedia via the includeSidecars
+          state above. */}
+      <AnimatePresence>
+        {clearSeriesPromptOpen && (
+          <motion.div
+            key="clear-series-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={spring.gentle}
+            onClick={() => setClearSeriesPromptOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+            }}
+          >
+            <motion.div
+              key="clear-series-card"
+              initial={{ opacity: 0, scale: 0.94, y: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: -6 }}
+              transition={spring.gentle}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--color-modal-bg)",
+                borderRadius: 12,
+                padding: 24,
+                maxWidth: 360,
+                border: "1px solid var(--color-surface)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--color-text)",
+                  marginBottom: 8,
+                }}
+              >
+                清除 NFO?
+              </div>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
+                }}
+              >
+                会删除该系列的 tvshow.nfo / movie.nfo 文件，
+                并重置菜单状态。
+              </p>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 20,
+                  cursor: "pointer",
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  background: includeSidecars
+                    ? "rgba(196, 126, 58, 0.08)"
+                    : "var(--color-surface-elevated)",
+                  border: includeSidecars
+                    ? "1px solid var(--color-accent-dim)"
+                    : "1px solid var(--color-surface)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeSidecars}
+                  onChange={(e) => setIncludeSidecars(e.target.checked)}
+                  style={{ marginTop: 2, cursor: "pointer" }}
+                />
+                <span style={{ lineHeight: 1.5 }}>
+                  同时删除海报 / 背景图
+                  <br />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    注意：会一并删除 poster.jpg / fanart.jpg，
+                    <strong>包括您手动放置的文件</strong>——mochi 无法区分来源
+                  </span>
+                </span>
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  onClick={() => setClearSeriesPromptOpen(false)}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    color: "var(--color-text-secondary)",
+                    background: "transparent",
+                    border: "1px solid var(--color-surface)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => handleClearSeriesNfo(includeSidecars)}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    color: includeSidecars
+                      ? "var(--color-modal-bg)"
+                      : "var(--color-accent)",
+                    background: includeSidecars
+                      ? "var(--color-accent)"
+                      : "var(--color-accent-dim)",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  清除
                 </button>
               </div>
             </motion.div>
