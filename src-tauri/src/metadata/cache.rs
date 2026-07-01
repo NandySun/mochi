@@ -26,6 +26,10 @@ pub async fn download_image(url: &str, cache_path: &Path, proxy_url: Option<&str
         if let Ok(proxy) = reqwest::Proxy::all(p) {
             builder = builder.proxy(proxy);
         }
+    } else if let Some(url) = crate::system_proxy::system_proxy_url() {
+        if let Ok(proxy) = reqwest::Proxy::all(&url) {
+            builder = builder.proxy(proxy);
+        }
     }
     let client = builder.build().map_err(|e| format!("Image client build failed: {e}"))?;
     let resp = client

@@ -7,7 +7,6 @@ import { BreathingDot } from "./BreathingDot";
 interface Props {
   ambiguous: SeriesScan[];
   tmdbApiKey: string | null;
-  proxyUrl: string | null;
   onClose: () => void;
   onResolved: () => void; // callback after all resolved/skipped, triggers rescan
 }
@@ -19,7 +18,7 @@ interface VerdictCard {
   tmdbResults: TmdbSearchResult[];
 }
 
-export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClose, onResolved }: Props) {
+export default function MetadataVerdict({ ambiguous, tmdbApiKey, onClose, onResolved }: Props) {
   const [cards, setCards] = useState<VerdictCard[]>(() =>
     ambiguous.map((s) => ({
       series: s,
@@ -44,7 +43,6 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
       // Search Bangumi
       const bgmPromise = invoke<BangumiSearchResult[]>("search_bangumi", {
         query: searchTerm,
-        proxyUrl,
       }).catch(() => [] as BangumiSearchResult[]);
 
       // Search TMDB TV
@@ -52,7 +50,6 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
         ? invoke<TmdbSearchResult[]>("search_tmdb_tv", {
             query: searchTerm,
             tmdbApiKey,
-            proxyUrl,
             language: "zh-CN",
             page: 1,
           }).catch(() => [] as TmdbSearchResult[])
@@ -107,7 +104,6 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
             tmdbId: null,
             mediaType: null,
             tmdbApiKey: tmdbApiKey,
-            proxyUrl,
           });
         } else {
           const tmdb = result as TmdbSearchResult;
@@ -120,7 +116,6 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
             tmdbId: tmdb.id,
             mediaType,
             tmdbApiKey: tmdbApiKey,
-            proxyUrl,
           });
         }
 
@@ -148,7 +143,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
         });
       }
     },
-    [current, currentIndex, cards, tmdbApiKey, proxyUrl]
+    [current, currentIndex, cards, tmdbApiKey]
   );
 
   const handleSkip = useCallback(() => {
@@ -199,7 +194,6 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
             tmdbId: null,
             mediaType: null,
             tmdbApiKey,
-            proxyUrl,
           });
         } else if (card.tmdbResults.length > 0) {
           const tmdb = card.tmdbResults[0];
@@ -212,7 +206,6 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
             tmdbId: tmdb.id,
             mediaType,
             tmdbApiKey,
-            proxyUrl,
           });
         }
       } catch (err) {
@@ -227,7 +220,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
     );
     onClose();
     onResolved();
-  }, [cards, tmdbApiKey, proxyUrl, onClose, onResolved]);
+  }, [cards, tmdbApiKey, onClose, onResolved]);
 
   const handleManualSearch = useCallback(async () => {
     if (!manualQuery.trim() || !current) return;
@@ -240,14 +233,12 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
 
     const bgmPromise = invoke<BangumiSearchResult[]>("search_bangumi", {
       query: manualQuery.trim(),
-      proxyUrl,
     }).catch(() => [] as BangumiSearchResult[]);
 
     const tmdbPromise = tmdbApiKey
       ? invoke<TmdbSearchResult[]>("search_tmdb_tv", {
           query: manualQuery.trim(),
           tmdbApiKey,
-          proxyUrl,
           language: "zh-CN",
           page: 1,
         }).catch(() => [] as TmdbSearchResult[])
@@ -266,7 +257,7 @@ export default function MetadataVerdict({ ambiguous, tmdbApiKey, proxyUrl, onClo
     });
     setShowManualSearch(false);
     setManualQuery("");
-  }, [manualQuery, current, proxyUrl, tmdbApiKey, currentIndex]);
+  }, [manualQuery, current, tmdbApiKey, currentIndex]);
 
   // ── Keyboard ────────────────────────────────────────────────────────
 

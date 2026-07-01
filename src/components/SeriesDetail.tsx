@@ -261,14 +261,12 @@ export default function SeriesDetail() {
     setRefreshingMeta(true);
     try {
       const tmdbKey = localStorage.getItem("mochi_tmdb_key") ?? "";
-      const proxyUrl = localStorage.getItem("mochi_proxy_url") ?? "";
       const override = editSearchTerm && searchTermInput.trim()
         ? searchTermInput.trim()
         : null;
       await invoke("refresh_single_series", {
         seriesId,
         tmdbApiKey: tmdbKey || null,
-        proxyUrl: proxyUrl || null,
         searchTermOverride: override || null,
       });
       reload();

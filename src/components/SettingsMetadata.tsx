@@ -5,8 +5,6 @@ import { BreathingDot } from "./BreathingDot";
 import { sectionTitle, actionBtn, label } from "../styles/settings";
 
 const TMDB_KEY = "mochi_tmdb_key";
-const PROXY_KEY = "mochi_proxy_url";
-const DEFAULT_PROXY = "";
 
 export default function SettingsMetadata() {
   const [tmdbKey, setTmdbKey] = useState(
@@ -14,18 +12,10 @@ export default function SettingsMetadata() {
   );
   const [showKey, setShowKey] = useState(false);
 
-  const [proxyUrl, setProxyUrl] = useState(
-    () => localStorage.getItem(PROXY_KEY) ?? DEFAULT_PROXY
-  );
-
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
 
   const saveTmdbKey = () => {
     localStorage.setItem(TMDB_KEY, tmdbKey);
-  };
-
-  const saveProxyUrl = () => {
-    localStorage.setItem(PROXY_KEY, proxyUrl);
   };
 
   const handleBatchFetch = async () => {
@@ -38,7 +28,6 @@ export default function SettingsMetadata() {
           await invoke("fetch_metadata", {
             seriesId: all[i].id,
             tmdbApiKey: tmdbKey,
-            proxyUrl,
             force: true,
           });
           // Also pull cast + episode metadata
@@ -75,17 +64,6 @@ export default function SettingsMetadata() {
           {showKey ? "🙈" : "👁"}
         </button>
       </div>
-
-      {/* proxy */}
-      <label style={label}>代理地址</label>
-      <input
-        type="text"
-        style={{ ...inputStyle, marginBottom: 16 }}
-        value={proxyUrl}
-        onChange={(e) => setProxyUrl(e.target.value)}
-        onBlur={saveProxyUrl}
-        placeholder="http://127.0.0.1:7890"
-      />
 
       {/* batch fetch */}
       {batchStatus ? (

@@ -129,6 +129,10 @@ impl TmdbClient {
             if let Ok(proxy) = reqwest::Proxy::all(url) {
                 builder = builder.proxy(proxy);
             }
+        } else if let Some(url) = crate::system_proxy::system_proxy_url() {
+            if let Ok(proxy) = reqwest::Proxy::all(&url) {
+                builder = builder.proxy(proxy);
+            }
         }
         Self {
             api_key: api_key.to_string(),

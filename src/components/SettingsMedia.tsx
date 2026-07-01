@@ -27,8 +27,6 @@ const ROOT_TYPES = [
 const DEFAULT_DIRS: RootDirEntry[] = [];
 
 const TMDB_KEY = "mochi_tmdb_key";
-const PROXY_KEY = "mochi_proxy_url";
-const DEFAULT_PROXY = "";
 
 /** Load and migrate root dirs from localStorage. */
 function loadRootDirs(): RootDirEntry[] {
@@ -73,9 +71,6 @@ export default function SettingsMedia() {
   );
   const [showKey, setShowKey] = useState(false);
   const [showTmdbHelp, setShowTmdbHelp] = useState(false);
-  const [proxyUrl, setProxyUrl] = useState(
-    () => localStorage.getItem(PROXY_KEY) ?? DEFAULT_PROXY
-  );
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
 
   // ── Subscribe to batch fetch events from Rust backend ─────────────
@@ -116,7 +111,6 @@ export default function SettingsMedia() {
   }, []);
 
   const saveTmdbKey = () => localStorage.setItem(TMDB_KEY, tmdbKey);
-  const saveProxyUrl = () => localStorage.setItem(PROXY_KEY, proxyUrl);
 
   const handleBatchFetch = async () => {
     if (batchStatus) return;
@@ -124,7 +118,6 @@ export default function SettingsMedia() {
     try {
       await invoke("batch_fetch_all_metadata", {
         tmdbApiKey: tmdbKey || undefined,
-        proxyUrl: proxyUrl || undefined,
       });
     } catch (e) {
       setBatchStatus(`失败: ${e}`);
@@ -439,17 +432,6 @@ export default function SettingsMedia() {
             {showKey ? "隐藏" : "显示"}
           </button>
         </div>
-
-        {/* proxy */}
-        <label style={label}>代理地址</label>
-        <input
-          type="text"
-          style={{ ...inputStyle, marginBottom: 16 }}
-          value={proxyUrl}
-          onChange={(e) => setProxyUrl(e.target.value)}
-          onBlur={saveProxyUrl}
-          placeholder="http://127.0.0.1:7890"
-        />
 
         {/* batch fetch */}
         {batchStatus ? (

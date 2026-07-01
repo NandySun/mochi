@@ -5,6 +5,7 @@ mod mochi_file;
 mod nfo;
 mod paths;
 mod scanner;
+mod system_proxy;
 
 use commands::AppState;
 use std::fs;

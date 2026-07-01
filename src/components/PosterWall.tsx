@@ -102,7 +102,6 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
   const [showVerdict, setShowVerdict] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [tmdbKey] = useState<string | null>(() => localStorage.getItem("mochi_tmdb_key"));
-  const [proxyUrl] = useState<string | null>(() => localStorage.getItem("mochi_proxy_url"));
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { setBg } = useBackground();
@@ -741,7 +740,6 @@ export default function PosterWall({ onOpenSettings }: { onOpenSettings: () => v
           <MetadataVerdict
             ambiguous={ambiguousSeries}
             tmdbApiKey={tmdbKey}
-            proxyUrl={proxyUrl}
             onClose={() => setShowVerdict(false)}
             onResolved={() => {
               localStorage.removeItem("mochi_ambiguous_series");

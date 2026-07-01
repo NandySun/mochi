@@ -109,6 +109,10 @@ impl BangumiClient {
             if let Ok(proxy) = reqwest::Proxy::all(url) {
                 builder = builder.proxy(proxy);
             }
+        } else if let Some(url) = crate::system_proxy::system_proxy_url() {
+            if let Ok(proxy) = reqwest::Proxy::all(&url) {
+                builder = builder.proxy(proxy);
+            }
         }
         Self {
             client: builder.build().expect("Bangumi client build"),

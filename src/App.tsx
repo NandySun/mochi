@@ -38,6 +38,13 @@ function GlobalBackground() {
   const parallaxX = useSpring(mouseX, { stiffness: 50, damping: 30 });
   const parallaxY = useSpring(mouseY, { stiffness: 50, damping: 30 });
 
+  // One-time migration: remove old manual proxy setting (now automatic via system proxy)
+  useEffect(() => {
+    if (localStorage.getItem("mochi_proxy_url") !== null) {
+      localStorage.removeItem("mochi_proxy_url");
+    }
+  }, []);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       mouseX.set((e.clientX / window.innerWidth - 0.5) * 12);

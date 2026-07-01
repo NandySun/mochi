@@ -1,6 +1,6 @@
 [package]
 name = "mochi"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2021"
 
 [lib]
@@ -24,3 +24,4 @@ tauri-plugin-window-state = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 quick-xml = "0.37"
 tokio = { version = "1", features = ["macros"] }
+winreg = "0.52"
